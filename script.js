@@ -540,11 +540,13 @@ function confirmRide() {
         return;
     }
     
-    // Guardar viaje en Firebase
+    // Cerrar modal y mostrar estado de búsqueda
+    closeRideModal();
+    
+    // Guardar viaje en Firebase y enviarlo a conductores
     saveTrip(window.currentTrip, currentLocation, destination);
     
-    showAlert(`¡Viaje confirmado! Total: RD$${window.currentTrip.totalFare.toFixed(2)}`, 'success');
-    closeRideModal();
+    showAlert(`¡Viaje enviado a conductores! Total: RD$${window.currentTrip.totalFare.toFixed(2)}`, 'success');
 }
 
 // Guardar viaje en Firebase
@@ -570,10 +572,15 @@ async function saveTrip(tripData, origin, destination) {
             timestamp: Date.now()
         });
         
-        // Mostrar estado de búsqueda
+        console.log('Viaje guardado con ID:', tripId);
+        console.log('Enviando a conductores conectados...');
+        
+        // Mostrar estado de búsqueda inmediatamente
         showSearchingDriver(tripId);
+        
     } catch (error) {
         console.error('Error saving trip:', error);
+        showAlert('Error al enviar el viaje', 'error');
     }
 }
 

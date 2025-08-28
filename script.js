@@ -600,20 +600,88 @@ function showSearchingDriver(tripId) {
             <button class="cancel-trip-btn" onclick="cancelTrip('${tripId}')">Cancelar Viaje</button>
         </div>
     `;
+    
+    // Escuchar cambios en el estado del viaje
+    const tripRef = window.doc(window.db, 'trips', tripId);
+    window.onSnapshot(tripRef, (doc) => {
+        if (doc.exists()) {
+            const trip = doc.data();
+            if (trip.status === 'accepted') {
+                showTripAccepted(trip);
+            } else if (trip.status === 'completed') {
+                showTripCompleted(trip);
+            }
+        }
+    });
+}
+
+// Mostrar viaje aceptado
+function showTripAccepted(trip) {
+    const mainApp = document.getElementById('mainApp');
+    const appContent = mainApp.querySelector('.app-content');
+    
+    appContent.innerHTML = `
+        <div class="trip-accepted-section">
+            <div class="driver-info">
+                <h2>✅ Conductor asignado</h2>
+                <p><strong>Conductor:</strong> ${trip.driverName}</p>
+                <p>El conductor se dirige hacia ti</p>
+            </div>
+            <div class="trip-status">
+                <div class="status-step completed">
+                    <span class="step-icon">✓</span>
+                    <span>Viaje confirmado</span>
+                </div>
+                <div class="status-step current">
+                    <span class="step-icon">🚗</span>
+                    <span>Conductor en camino</span>
+                </div>
+                <div class="status-step">
+                    <span class="step-icon">📍</span>
+                    <span>Viaje completado</span>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// Mostrar viaje completado
+function showTripCompleted(trip) {
+    const mainApp = document.getElementById('mainApp');
+    const appContent = mainApp.querySelector('.app-content');
+    
+    appContent.innerHTML = `
+        <div class="trip-completed-section">
+            <div class="completion-message">
+                <h2>🎉 Viaje completado</h2>
+                <p>¡Gracias por usar Blinriderd!</p>
+                <div class="trip-summary">
+                    <p><strong>Total pagado:</strong> RD$${trip.totalFare.toFixed(2)}</p>
+                    <p><strong>Distancia:</strong> ${trip.distance} km</p>
+                </div>
+            </div>
+            <button class="home-btn" onclick="showSection('home')">Volver al inicio</button>
+        </div>
+    `;
+    
+    setTimeout(() => {
+        showSection('home');
+    }, 5000);
 }
 
 // Cancelar viaje
 async function cancelTrip(tripId) {
     try {
-        await window.setDoc(window.doc(window.db, 'trips', tripId), {
+        await window.updateDoc(window.doc(window.db, 'trips', tripId), {
             status: 'cancelled',
             cancelledAt: new Date()
-        }, { merge: true });
+        });
         
         showAlert('Viaje cancelado', 'warning');
         showSection('home');
     } catch (error) {
         console.error('Error cancelling trip:', error);
+        showAlert('Error al cancelar el viaje', 'error');
     }
 }
 
@@ -623,13 +691,91 @@ async function loadUserTrips() {
         const user = window.auth.currentUser;
         if (!user) return;
         
-        // Simular carga de viajes (implementar con query real)
         const activityList = document.getElementById('activityList');
-        activityList.innerHTML = '<p>No hay viajes recientes</p>';
+        activityList.innerHTML = '<p>Cargando viajes...</p>';
+        
+        // Consulta real de Firebase para obtener viajes del usuario
+        const userTripsQuery = window.query(
+            window.collection(window.db, 'trips'),
+            window.where('userId', '==', user.uid)
+        );
+        
+        window.onSnapshot(userTripsQuery, (snapshot) => {
+            if (snapshot.empty) {
+                activityList.innerHTML = '<p>No hay viajes registrados</p>';
+                return;
+            }
+            
+            let tripsHTML = '';
+            const trips = [];
+            
+            snapshot.forEach((doc) => {
+                trips.push({ id: doc.id, ...doc.data() });
+            });
+            
+            // Ordenar por fecha más reciente
+            trips.sort((a, b) => b.timestamp - a.timestamp);
+            
+            trips.forEach((trip) => {
+                const statusText = {
+                    'searching': 'Buscando conductor',
+                    'accepted': 'Conductor asignado',
+                    'in_progress': 'En progreso',
+                    'completed': 'Completado',
+                    'cancelled': 'Cancelado'
+                };
+                
+                const statusClass = {
+                    'searching': 'status-searching',
+                    'accepted': 'status-accepted',
+                    'in_progress': 'status-progress',
+                    'completed': 'status-completed',
+                    'cancelled': 'status-cancelled'
+                };
+                
+                tripsHTML += `
+                    <div class="trip-history-card">
+                        <div class="trip-header">
+                            <span class="trip-date">${formatTripDate(trip.createdAt.toDate())}</span>
+                            <span class="trip-status ${statusClass[trip.status]}">${statusText[trip.status]}</span>
+                        </div>
+                        <div class="trip-route">
+                            <div class="route-point">📍 ${trip.origin}</div>
+                            <div class="route-arrow">→</div>
+                            <div class="route-point">📍 ${trip.destination}</div>
+                        </div>
+                        <div class="trip-details">
+                            <span class="trip-distance">${trip.distance} km</span>
+                            <span class="trip-fare">RD$${trip.totalFare.toFixed(2)}</span>
+                            ${trip.driverName ? `<span class="trip-driver">👤 ${trip.driverName}</span>` : ''}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            activityList.innerHTML = tripsHTML;
+        });
         
     } catch (error) {
         console.error('Error loading trips:', error);
         document.getElementById('activityList').innerHTML = '<p>Error cargando viajes</p>';
+    }
+}
+
+// Formatear fecha del viaje
+function formatTripDate(date) {
+    const now = new Date();
+    const diffMs = now - date;
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) {
+        return date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    } else if (diffDays === 1) {
+        return 'Ayer';
+    } else if (diffDays < 7) {
+        return `Hace ${diffDays} días`;
+    } else {
+        return date.toLocaleDateString('es-ES');
     }
 }
 

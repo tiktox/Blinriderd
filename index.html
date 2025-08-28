@@ -38,7 +38,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
         import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
-        import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, collection, query, where, onSnapshot, updateDoc } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
         
         const firebaseConfig = {
             apiKey: "AIzaSyC64S8YDVEoeyyteRix_TyItBWD49rDZbo",
@@ -62,6 +62,11 @@
         window.updateProfile = updateProfile;
         window.setDoc = setDoc;
         window.doc = doc;
+        window.collection = collection;
+        window.query = query;
+        window.where = where;
+        window.onSnapshot = onSnapshot;
+        window.updateDoc = updateDoc;
     </script>
     <script src="script.js" defer></script>
 </head>
@@ -95,13 +100,13 @@
                 <div class="nav-icon">🚗</div>
                 <div class="nav-label">Viajes</div>
             </div>
-            <div class="nav-item" onclick="showDriverSection('earnings')">
-                <div class="nav-icon">💰</div>
-                <div class="nav-label">Ganancias</div>
-            </div>
             <div class="nav-item" onclick="showDriverSection('profile')">
                 <div class="nav-icon">👤</div>
                 <div class="nav-label">Perfil</div>
+            </div>
+            <div class="nav-item" onclick="showDriverSection('earnings')">
+                <div class="nav-icon">💰</div>
+                <div class="nav-label">Ganancias</div>
             </div>
         </div>
     </div>

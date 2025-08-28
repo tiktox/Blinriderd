@@ -680,36 +680,107 @@ function toggleDriverStatus() {
     }
 }
 
-// Cargar viajes disponibles
+// Cargar viajes disponibles desde Firebase
+let tripsListener = null;
 function loadAvailableTrips() {
-    // Simular viajes disponibles
     const tripsList = document.getElementById('tripsList');
-    tripsList.innerHTML = `
-        <div class="trip-card">
-            <div class="trip-info">
-                <div class="trip-route">
-                    <div class="route-point">📍 Centro Olímpico</div>
-                    <div class="route-arrow">→</div>
-                    <div class="route-point">📍 Plaza Central</div>
+    tripsList.innerHTML = '<p>Buscando viajes cercanos...</p>';
+    
+    // Consulta en tiempo real de viajes con estado "searching"
+    const tripsQuery = window.query(
+        window.collection(window.db, 'trips'),
+        window.where('status', '==', 'searching')
+    );
+    
+    // Escuchar cambios en tiempo real
+    tripsListener = window.onSnapshot(tripsQuery, (snapshot) => {
+        if (snapshot.empty) {
+            tripsList.innerHTML = '<p>No hay viajes disponibles</p>';
+            return;
+        }
+        
+        let tripsHTML = '';
+        snapshot.forEach((doc) => {
+            const trip = doc.data();
+            const tripId = doc.id;
+            
+            // Calcular ganancias del conductor (95%)
+            const driverEarnings = (trip.totalFare * 0.95).toFixed(2);
+            
+            tripsHTML += `
+                <div class="trip-card" data-trip-id="${tripId}">
+                    <div class="trip-info">
+                        <div class="trip-route">
+                            <div class="route-point">📍 ${trip.origin}</div>
+                            <div class="route-arrow">→</div>
+                            <div class="route-point">📍 ${trip.destination}</div>
+                        </div>
+                        <div class="trip-details">
+                            <span class="distance">${trip.distance} km</span>
+                            <span class="fare">RD$${trip.totalFare.toFixed(2)}</span>
+                            <span class="earnings">Ganas: RD$${driverEarnings}</span>
+                        </div>
+                        <div class="trip-user">
+                            <span class="user-name">👤 ${trip.userName}</span>
+                            <span class="trip-time">${formatTime(trip.createdAt.toDate())}</span>
+                        </div>
+                    </div>
+                    <div class="trip-actions">
+                        <button class="accept-btn" onclick="acceptTrip('${tripId}')">Aceptar</button>
+                        <button class="decline-btn" onclick="declineTrip('${tripId}')">Rechazar</button>
+                    </div>
                 </div>
-                <div class="trip-details">
-                    <span class="distance">3.2 km</span>
-                    <span class="fare">RD$96.00</span>
-                    <span class="earnings">Ganas: RD$91.20</span>
-                </div>
-            </div>
-            <div class="trip-actions">
-                <button class="accept-btn" onclick="acceptTrip('trip1')">Aceptar</button>
-                <button class="decline-btn" onclick="declineTrip('trip1')">Rechazar</button>
-            </div>
-        </div>
-    `;
+            `;
+        });
+        
+        tripsList.innerHTML = tripsHTML;
+    });
+}
+
+// Formatear tiempo
+function formatTime(date) {
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    
+    if (diffMins < 1) return 'Ahora';
+    if (diffMins < 60) return `${diffMins}m`;
+    return `${Math.floor(diffMins / 60)}h`;
 }
 
 // Aceptar viaje
-function acceptTrip(tripId) {
-    showAlert('Viaje aceptado! Dirigiéndote al cliente...', 'success');
-    
+async function acceptTrip(tripId) {
+    try {
+        const currentUser = window.auth.currentUser;
+        if (!currentUser) return;
+        
+        // Actualizar estado del viaje en Firebase
+        await window.updateDoc(window.doc(window.db, 'trips', tripId), {
+            status: 'accepted',
+            driverId: currentUser.uid,
+            driverName: currentUser.displayName || 'Conductor',
+            acceptedAt: new Date()
+        });
+        
+        showAlert('Viaje aceptado! Dirigiéndote al cliente...', 'success');
+        
+        // Detener listener de viajes disponibles
+        if (tripsListener) {
+            tripsListener();
+            tripsListener = null;
+        }
+        
+        // Mostrar interfaz de viaje activo
+        showActiveTrip(tripId);
+        
+    } catch (error) {
+        console.error('Error accepting trip:', error);
+        showAlert('Error al aceptar el viaje', 'error');
+    }
+}
+
+// Mostrar viaje activo
+function showActiveTrip(tripId) {
     const driverContent = document.getElementById('driverContent');
     driverContent.innerHTML = `
         <div class="active-trip">
@@ -742,21 +813,33 @@ function declineTrip(tripId) {
 }
 
 // Completar viaje
-function completeTrip(tripId) {
-    showAlert('Viaje completado! +RD$91.20 ganados', 'success');
-    
-    setTimeout(() => {
-        const driverContent = document.getElementById('driverContent');
-        driverContent.innerHTML = `
-            <div id="availableTrips" class="trips-container">
-                <h3>📍 Viajes Disponibles</h3>
-                <div class="trips-list" id="tripsList">
-                    <p>Buscando viajes cercanos...</p>
+async function completeTrip(tripId) {
+    try {
+        // Actualizar estado del viaje en Firebase
+        await window.updateDoc(window.doc(window.db, 'trips', tripId), {
+            status: 'completed',
+            completedAt: new Date()
+        });
+        
+        showAlert('Viaje completado! Ganancias agregadas', 'success');
+        
+        setTimeout(() => {
+            const driverContent = document.getElementById('driverContent');
+            driverContent.innerHTML = `
+                <div id="availableTrips" class="trips-container">
+                    <h3>📍 Viajes Disponibles</h3>
+                    <div class="trips-list" id="tripsList">
+                        <p>Buscando viajes cercanos...</p>
+                    </div>
                 </div>
-            </div>
-        `;
-        loadAvailableTrips();
-    }, 2000);
+            `;
+            loadAvailableTrips();
+        }, 2000);
+        
+    } catch (error) {
+        console.error('Error completing trip:', error);
+        showAlert('Error al completar el viaje', 'error');
+    }
 }
 
 // Navegación del conductor

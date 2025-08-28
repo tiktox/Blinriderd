@@ -819,8 +819,25 @@ input:valid:not(:placeholder-shown) {
 .trip-details {
     display: flex;
     gap: 16px;
+    margin-bottom: 12px;
+    font-size: 12px;
+}
+
+.trip-user {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 16px;
     font-size: 12px;
+}
+
+.user-name {
+    color: #3B82F6;
+    font-weight: 600;
+}
+
+.trip-time {
+    color: #6E6E6E;
 }
 
 .distance {

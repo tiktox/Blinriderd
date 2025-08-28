@@ -812,13 +812,20 @@ function toggleDriverStatus() {
             <div id="availableTrips" class="trips-container">
                 <h3>📍 Viajes Disponibles</h3>
                 <div class="trips-list" id="tripsList">
-                    <p>Buscando viajes cercanos...</p>
+                    <p>Conectando...</p>
                 </div>
             </div>
         `;
         
-        loadAvailableTrips();
+        // Esperar a que el DOM se actualice antes de cargar viajes
+        setTimeout(() => loadAvailableTrips(), 100);
     } else {
+        // Limpiar listener al desconectarse
+        if (tripsListener) {
+            tripsListener();
+            tripsListener = null;
+        }
+        
         statusElement.className = 'status-indicator offline';
         statusElement.querySelector('.status-text').textContent = 'Desconectado';
         statusBtn.textContent = 'Conectarse';
@@ -836,58 +843,92 @@ function toggleDriverStatus() {
 // Cargar viajes disponibles desde Firebase
 let tripsListener = null;
 function loadAvailableTrips() {
+    // Verificar que Firebase esté inicializado
+    if (!window.db || !window.collection || !window.query || !window.where || !window.onSnapshot) {
+        console.error('Firebase no está inicializado correctamente');
+        const tripsList = document.getElementById('tripsList');
+        if (tripsList) {
+            tripsList.innerHTML = '<p>Error: Firebase no disponible</p>';
+        }
+        return;
+    }
+    
     const tripsList = document.getElementById('tripsList');
+    if (!tripsList) {
+        console.error('Elemento tripsList no encontrado');
+        return;
+    }
+    
     tripsList.innerHTML = '<p>Buscando viajes cercanos...</p>';
     
-    // Consulta en tiempo real de viajes con estado "searching"
-    const tripsQuery = window.query(
-        window.collection(window.db, 'trips'),
-        window.where('status', '==', 'searching')
-    );
+    // Limpiar listener anterior si existe
+    if (tripsListener) {
+        tripsListener();
+        tripsListener = null;
+    }
     
-    // Escuchar cambios en tiempo real
-    tripsListener = window.onSnapshot(tripsQuery, (snapshot) => {
-        if (snapshot.empty) {
-            tripsList.innerHTML = '<p>No hay viajes disponibles</p>';
-            return;
-        }
+    try {
+        // Consulta en tiempo real de viajes con estado "searching"
+        const tripsQuery = window.query(
+            window.collection(window.db, 'trips'),
+            window.where('status', '==', 'searching')
+        );
         
-        let tripsHTML = '';
-        snapshot.forEach((doc) => {
-            const trip = doc.data();
-            const tripId = doc.id;
+        // Escuchar cambios en tiempo real
+        tripsListener = window.onSnapshot(tripsQuery, (snapshot) => {
+            console.log('Snapshot recibido:', snapshot.size, 'viajes');
             
-            // Calcular ganancias del conductor (95%)
-            const driverEarnings = (trip.totalFare * 0.95).toFixed(2);
+            if (snapshot.empty) {
+                tripsList.innerHTML = '<p>No hay viajes disponibles</p>';
+                return;
+            }
             
-            tripsHTML += `
-                <div class="trip-card" data-trip-id="${tripId}">
-                    <div class="trip-info">
-                        <div class="trip-route">
-                            <div class="route-point">📍 ${trip.origin}</div>
-                            <div class="route-arrow">→</div>
-                            <div class="route-point">📍 ${trip.destination}</div>
+            let tripsHTML = '';
+            snapshot.forEach((doc) => {
+                const trip = doc.data();
+                const tripId = doc.id;
+                
+                console.log('Viaje encontrado:', tripId, trip);
+                
+                // Calcular ganancias del conductor (95%)
+                const driverEarnings = (trip.totalFare * 0.95).toFixed(2);
+                
+                tripsHTML += `
+                    <div class="trip-card" data-trip-id="${tripId}">
+                        <div class="trip-info">
+                            <div class="trip-route">
+                                <div class="route-point">📍 ${trip.origin}</div>
+                                <div class="route-arrow">→</div>
+                                <div class="route-point">📍 ${trip.destination}</div>
+                            </div>
+                            <div class="trip-details">
+                                <span class="distance">${trip.distance} km</span>
+                                <span class="fare">RD$${trip.totalFare.toFixed(2)}</span>
+                                <span class="earnings">Ganas: RD$${driverEarnings}</span>
+                            </div>
+                            <div class="trip-user">
+                                <span class="user-name">👤 ${trip.userName}</span>
+                                <span class="trip-time">${formatTime(trip.createdAt.toDate())}</span>
+                            </div>
                         </div>
-                        <div class="trip-details">
-                            <span class="distance">${trip.distance} km</span>
-                            <span class="fare">RD$${trip.totalFare.toFixed(2)}</span>
-                            <span class="earnings">Ganas: RD$${driverEarnings}</span>
-                        </div>
-                        <div class="trip-user">
-                            <span class="user-name">👤 ${trip.userName}</span>
-                            <span class="trip-time">${formatTime(trip.createdAt.toDate())}</span>
+                        <div class="trip-actions">
+                            <button class="accept-btn" onclick="acceptTrip('${tripId}')">Aceptar</button>
+                            <button class="decline-btn" onclick="declineTrip('${tripId}')">Rechazar</button>
                         </div>
                     </div>
-                    <div class="trip-actions">
-                        <button class="accept-btn" onclick="acceptTrip('${tripId}')">Aceptar</button>
-                        <button class="decline-btn" onclick="declineTrip('${tripId}')">Rechazar</button>
-                    </div>
-                </div>
-            `;
+                `;
+            });
+            
+            tripsList.innerHTML = tripsHTML;
+        }, (error) => {
+            console.error('Error en listener de viajes:', error);
+            tripsList.innerHTML = '<p>Error cargando viajes</p>';
         });
         
-        tripsList.innerHTML = tripsHTML;
-    });
+    } catch (error) {
+        console.error('Error creando query de viajes:', error);
+        tripsList.innerHTML = '<p>Error conectando con Firebase</p>';
+    }
 }
 
 // Formatear tiempo
@@ -1007,7 +1048,15 @@ function showDriverSection(section) {
     switch(section) {
         case 'trips':
             if (driverOnline) {
-                loadAvailableTrips();
+                driverContent.innerHTML = `
+                    <div id="availableTrips" class="trips-container">
+                        <h3>📍 Viajes Disponibles</h3>
+                        <div class="trips-list" id="tripsList">
+                            <p>Cargando...</p>
+                        </div>
+                    </div>
+                `;
+                setTimeout(() => loadAvailableTrips(), 100);
             } else {
                 driverContent.innerHTML = `
                     <div class="no-trips">

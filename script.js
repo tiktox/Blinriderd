@@ -1006,6 +1006,15 @@ async function acceptTrip(tripId) {
         const currentUser = window.auth.currentUser;
         if (!currentUser) return;
         
+        // Obtener datos del viaje
+        const tripDoc = await window.getDoc(window.doc(window.db, 'trips', tripId));
+        if (!tripDoc.exists()) {
+            showAlert('Error: Viaje no encontrado', 'error');
+            return;
+        }
+        
+        const tripData = tripDoc.data();
+        
         // Actualizar estado del viaje en Firebase
         await window.updateDoc(window.doc(window.db, 'trips', tripId), {
             status: 'accepted',
@@ -1022,8 +1031,8 @@ async function acceptTrip(tripId) {
             tripsListener = null;
         }
         
-        // Mostrar interfaz de viaje activo
-        showActiveTrip(tripId);
+        // Mostrar interfaz de viaje activo con navegación
+        showActiveTrip(tripId, tripData);
         
     } catch (error) {
         console.error('Error accepting trip:', error);
@@ -1031,12 +1040,49 @@ async function acceptTrip(tripId) {
     }
 }
 
-// Mostrar viaje activo
-function showActiveTrip(tripId) {
+// Mostrar viaje activo con navegación
+function showActiveTrip(tripId, tripData) {
     const driverContent = document.getElementById('driverContent');
+    
+    // Crear URL de Google Maps para navegación
+    const origin = encodeURIComponent('Mi ubicación');
+    const destination = encodeURIComponent(tripData.origin);
+    const mapsUrl = `https://www.google.com/maps/dir/${origin}/${destination}`;
+    
     driverContent.innerHTML = `
         <div class="active-trip">
             <h3>🎯 Viaje en Progreso</h3>
+            
+            <div class="trip-info-card">
+                <div class="client-info">
+                    <h4>👤 Cliente: ${tripData.userName}</h4>
+                    <p>📞 ${tripData.userPhone || 'Teléfono no disponible'}</p>
+                </div>
+                
+                <div class="trip-route-info">
+                    <div class="route-step">
+                        <span class="route-icon">📍</span>
+                        <div class="route-details">
+                            <strong>Recoger en:</strong>
+                            <p>${tripData.origin}</p>
+                        </div>
+                    </div>
+                    <div class="route-arrow">↓</div>
+                    <div class="route-step">
+                        <span class="route-icon">🏁</span>
+                        <div class="route-details">
+                            <strong>Destino:</strong>
+                            <p>${tripData.destination}</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="trip-earnings">
+                    <span class="earnings-label">Ganarás:</span>
+                    <span class="earnings-amount">RD$${(tripData.totalFare * 0.95).toFixed(2)}</span>
+                </div>
+            </div>
+            
             <div class="trip-status">
                 <div class="status-step active">
                     <span class="step-icon">✓</span>
@@ -1051,11 +1097,99 @@ function showActiveTrip(tripId) {
                     <span>Viaje completado</span>
                 </div>
             </div>
+            
+            <div class="navigation-section">
+                <h4>🧭 Navegación</h4>
+                <div class="navigation-buttons">
+                    <a href="${mapsUrl}" target="_blank" class="navigate-btn">
+                        🗺️ Abrir en Google Maps
+                    </a>
+                    <button class="waze-btn" onclick="openInWaze('${tripData.origin}')">
+                        🚗 Abrir en Waze
+                    </button>
+                </div>
+                <div class="navigation-info">
+                    <p>📍 <strong>Dirección:</strong> ${tripData.origin}</p>
+                    <p>⏱️ <strong>Distancia estimada:</strong> ${tripData.distance} km</p>
+                </div>
+            </div>
+            
             <div class="trip-actions">
+                <button class="arrived-btn" onclick="markArrived('${tripId}')">He llegado al punto de recogida</button>
                 <button class="complete-btn" onclick="completeTrip('${tripId}')">Completar Viaje</button>
+                <button class="cancel-trip-btn" onclick="cancelActiveTrip('${tripId}')">Cancelar Viaje</button>
             </div>
         </div>
     `;
+}
+
+// Abrir en Waze
+function openInWaze(destination) {
+    const wazeUrl = `https://waze.com/ul?q=${encodeURIComponent(destination)}&navigate=yes`;
+    window.open(wazeUrl, '_blank');
+}
+
+// Marcar llegada al punto de recogida
+async function markArrived(tripId) {
+    try {
+        await window.updateDoc(window.doc(window.db, 'trips', tripId), {
+            status: 'driver_arrived',
+            arrivedAt: new Date()
+        });
+        
+        showAlert('✅ Marcado como llegado. El cliente ha sido notificado.', 'success');
+        
+        // Actualizar el estado visual
+        const statusSteps = document.querySelectorAll('.status-step');
+        if (statusSteps.length >= 2) {
+            statusSteps[1].classList.remove('current');
+            statusSteps[1].classList.add('active');
+            statusSteps[1].innerHTML = `
+                <span class="step-icon">✓</span>
+                <span>Llegaste al punto de recogida</span>
+            `;
+        }
+        
+        // Ocultar botón "He llegado"
+        const arrivedBtn = document.querySelector('.arrived-btn');
+        if (arrivedBtn) {
+            arrivedBtn.style.display = 'none';
+        }
+        
+    } catch (error) {
+        console.error('Error marking arrival:', error);
+        showAlert('Error al marcar llegada', 'error');
+    }
+}
+
+// Cancelar viaje activo
+async function cancelActiveTrip(tripId) {
+    if (confirm('¿Estás seguro de que quieres cancelar este viaje?')) {
+        try {
+            await window.updateDoc(window.doc(window.db, 'trips', tripId), {
+                status: 'cancelled_by_driver',
+                cancelledAt: new Date()
+            });
+            
+            showAlert('Viaje cancelado', 'warning');
+            
+            // Volver a la lista de viajes disponibles
+            const driverContent = document.getElementById('driverContent');
+            driverContent.innerHTML = `
+                <div id="availableTrips" class="trips-container">
+                    <h3>📍 Viajes Disponibles</h3>
+                    <div class="trips-list" id="tripsList">
+                        <p>Buscando viajes cercanos...</p>
+                    </div>
+                </div>
+            `;
+            loadAvailableTrips();
+            
+        } catch (error) {
+            console.error('Error cancelling trip:', error);
+            showAlert('Error al cancelar el viaje', 'error');
+        }
+    }
 }
 
 // Rechazar viaje

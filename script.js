@@ -1,52 +1,3 @@
-// ================= CONFIGURACIÓN DE FIREBASE =================
-// Firebase configuration and initialization
-const firebaseConfig = {
-    apiKey: "tu-api-key",
-    authDomain: "tu-proyecto.firebaseapp.com",
-    projectId: "tu-proyecto",
-    storageBucket: "tu-proyecto.appspot.com",
-    messagingSenderId: "tu-messaging-sender-id",
-    appId: "tu-app-id"
-};
-
-// Inicializar Firebase solo si no se ha inicializado previamente
-if (!window.firebaseInitialized) {
-    try {
-        // Inicializar Firebase
-        window.firebaseApp = window.initializeApp(firebaseConfig);
-        window.db = window.getFirestore(window.firebaseApp);
-        window.auth = window.getAuth(window.firebaseApp);
-        
-        // Hacer disponibles las funciones de Firebase
-        window.collection = window.collection;
-        window.doc = window.doc;
-        window.query = window.query;
-        window.where = window.where;
-        window.onSnapshot = window.onSnapshot;
-        window.setDoc = window.setDoc;
-        window.updateDoc = window.updateDoc;
-        window.createUserWithEmailAndPassword = window.createUserWithEmailAndPassword;
-        window.signInWithEmailAndPassword = window.signInWithEmailAndPassword;
-        window.updateProfile = window.updateProfile;
-        
-        window.firebaseInitialized = true;
-        console.log("Firebase inicializado correctamente");
-    } catch (error) {
-        console.error("Error inicializando Firebase:", error);
-    }
-}
-
-// Verificar conexión con Firebase
-function checkFirebaseConnection() {
-    if (window.auth && window.db) {
-        console.log('Firebase inicializado correctamente');
-        return true;
-    } else {
-        console.error('Firebase no está inicializado correctamente');
-        return false;
-    }
-}
-
 // Crear partículas de fondo
 function createParticles() {
     const particlesContainer = document.getElementById('particles');
@@ -114,11 +65,6 @@ function validateForm(formId) {
 // Registrar usuario en Firebase
 async function registerUser(userData, userType) {
     try {
-        // Verificar que Firebase esté inicializado
-        if (!checkFirebaseConnection()) {
-            throw new Error('Firebase no está disponible');
-        }
-        
         const userCredential = await window.createUserWithEmailAndPassword(
             window.auth, 
             userData.email, 
@@ -151,7 +97,6 @@ async function registerUser(userData, userType) {
         
         return userCredential.user;
     } catch (error) {
-        console.error('Error en registerUser:', error);
         throw error;
     }
 }
@@ -192,8 +137,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 case 'auth/invalid-email':
                     errorMessage = 'Correo electrónico inválido';
                     break;
-                default:
-                    errorMessage = error.message || 'Error desconocido';
             }
             
             showAlert(errorMessage, 'error');
@@ -240,8 +183,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 case 'auth/too-many-requests':
                     errorMessage = 'Demasiados intentos. Intenta más tarde';
                     break;
-                default:
-                    errorMessage = error.message || 'Error desconocido';
             }
             
             showAlert(errorMessage, 'error');
@@ -288,8 +229,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 case 'auth/too-many-requests':
                     errorMessage = 'Demasiados intentos. Intenta más tarde';
                     break;
-                default:
-                    errorMessage = error.message || 'Error desconocido';
             }
             
             showAlert(errorMessage, 'error');
@@ -332,8 +271,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 case 'auth/invalid-email':
                     errorMessage = 'Correo electrónico inválido';
                     break;
-                default:
-                    errorMessage = error.message || 'Error desconocido';
             }
             
             showAlert(errorMessage, 'error');
@@ -615,16 +552,11 @@ function confirmRide() {
 // Guardar viaje en Firebase
 async function saveTrip(tripData, origin, destination) {
     try {
-        // Verificar que Firebase esté inicializado
-        if (!checkFirebaseConnection()) {
-            throw new Error('Firebase no está disponible');
-        }
-        
         const user = window.auth.currentUser;
         if (!user) return;
         
         const tripId = Date.now().toString();
-        const tripDoc = {
+        await window.setDoc(window.doc(window.db, 'trips', tripId), {
             userId: user.uid,
             userName: user.displayName || 'Usuario',
             userPhone: user.phoneNumber || '',
@@ -638,11 +570,7 @@ async function saveTrip(tripData, origin, destination) {
             status: 'searching', // searching -> accepted -> in_progress -> completed
             createdAt: new Date(),
             timestamp: Date.now()
-        };
-        
-        console.log('Guardando viaje con datos:', tripDoc);
-        
-        await window.setDoc(window.doc(window.db, 'trips', tripId), tripDoc);
+        });
         
         console.log('Viaje guardado con ID:', tripId);
         console.log('Enviando a conductores conectados...');
@@ -678,19 +606,12 @@ function showSearchingDriver(tripId) {
     window.onSnapshot(tripRef, (doc) => {
         if (doc.exists()) {
             const trip = doc.data();
-            console.log('Cambio de estado del viaje:', trip.status);
-            
             if (trip.status === 'accepted') {
                 showTripAccepted(trip);
             } else if (trip.status === 'completed') {
                 showTripCompleted(trip);
-            } else if (trip.status === 'cancelled') {
-                showAlert('Viaje cancelado', 'warning');
-                showSection('home');
             }
         }
-    }, (error) => {
-        console.error('Error en listener de viaje:', error);
     });
 }
 
@@ -751,11 +672,6 @@ function showTripCompleted(trip) {
 // Cancelar viaje
 async function cancelTrip(tripId) {
     try {
-        // Verificar que Firebase esté inicializado
-        if (!checkFirebaseConnection()) {
-            throw new Error('Firebase no está disponible');
-        }
-        
         await window.updateDoc(window.doc(window.db, 'trips', tripId), {
             status: 'cancelled',
             cancelledAt: new Date()
@@ -772,11 +688,6 @@ async function cancelTrip(tripId) {
 // Cargar viajes del usuario
 async function loadUserTrips() {
     try {
-        // Verificar que Firebase esté inicializado
-        if (!checkFirebaseConnection()) {
-            throw new Error('Firebase no está disponible');
-        }
-        
         const user = window.auth.currentUser;
         if (!user) return;
         
@@ -790,8 +701,6 @@ async function loadUserTrips() {
         );
         
         window.onSnapshot(userTripsQuery, (snapshot) => {
-            console.log('Viajes de usuario encontrados:', snapshot.size);
-            
             if (snapshot.empty) {
                 activityList.innerHTML = '<p>No hay viajes registrados</p>';
                 return;
@@ -845,9 +754,6 @@ async function loadUserTrips() {
             });
             
             activityList.innerHTML = tripsHTML;
-        }, (error) => {
-            console.error('Error en listener de viajes de usuario:', error);
-            activityList.innerHTML = '<p>Error cargando viajes</p>';
         });
         
     } catch (error) {
@@ -890,8 +796,6 @@ function showDriverApp(user) {
 
 // Alternar estado del conductor
 let driverOnline = false;
-let tripsListener = null;
-
 function toggleDriverStatus() {
     driverOnline = !driverOnline;
     const statusElement = document.getElementById('driverStatus');
@@ -908,20 +812,13 @@ function toggleDriverStatus() {
             <div id="availableTrips" class="trips-container">
                 <h3>📍 Viajes Disponibles</h3>
                 <div class="trips-list" id="tripsList">
-                    <p>Conectando...</p>
+                    <p>Buscando viajes cercanos...</p>
                 </div>
             </div>
         `;
         
-        // Esperar a que el DOM se actualice antes de cargar viajes
-        setTimeout(() => loadAvailableTrips(), 100);
+        loadAvailableTrips();
     } else {
-        // Limpiar listener al desconectarse
-        if (tripsListener) {
-            tripsListener();
-            tripsListener = null;
-        }
-        
         statusElement.className = 'status-indicator offline';
         statusElement.querySelector('.status-text').textContent = 'Desconectado';
         statusBtn.textContent = 'Conectarse';
@@ -937,205 +834,325 @@ function toggleDriverStatus() {
 }
 
 // Cargar viajes disponibles desde Firebase
+let tripsListener = null;
 function loadAvailableTrips() {
-    // Verificar que Firebase esté inicializado
-    if (!checkFirebaseConnection()) {
-        const tripsList = document.getElementById('tripsList');
-        if (tripsList) {
-            tripsList.innerHTML = '<p>Error: Firebase no disponible</p>';
-        }
-        return;
-    }
-    
     const tripsList = document.getElementById('tripsList');
-    if (!tripsList) {
-        console.error('Elemento tripsList no encontrado');
-        return;
-    }
-    
     tripsList.innerHTML = '<p>Buscando viajes cercanos...</p>';
     
-    // Limpiar listener anterior si existe
-    if (tripsListener) {
-        tripsListener();
-        tripsListener = null;
-    }
+    // Consulta en tiempo real de viajes con estado "searching"
+    const tripsQuery = window.query(
+        window.collection(window.db, 'trips'),
+        window.where('status', '==', 'searching')
+    );
     
-    try {
-        // Consulta en tiempo real de viajes con estado "searching"
-        const tripsRef = window.collection(window.db, 'trips');
-        const searchingTrips = window.query(tripsRef, window.where('status', '==', 'searching'));
+    // Escuchar cambios en tiempo real
+    tripsListener = window.onSnapshot(tripsQuery, (snapshot) => {
+        if (snapshot.empty) {
+            tripsList.innerHTML = '<p>No hay viajes disponibles</p>';
+            return;
+        }
         
-        // Escuchar cambios en tiempo real
-        tripsListener = window.onSnapshot(searchingTrips, 
-            (snapshot) => {
-                console.log(`Snapshot recibido: ${snapshot.size} viajes`);
-                console.log('Snapshot vacío:', snapshot.empty);
-                
-                if (snapshot.empty) {
-                    tripsList.innerHTML = '<p>No hay viajes disponibles</p>';
-                    return;
-                }
-                
-                let tripsHTML = '';
-                snapshot.forEach((doc) => {
-                    const trip = doc.data();
-                    const tripId = doc.id;
-                    
-                    console.log('Viaje encontrado:', tripId, trip);
-                    
-                    // Calcular ganancias del conductor (95%)
-                    const driverEarnings = (trip.totalFare * 0.95).toFixed(2);
-                    
-                    tripsHTML += `
-                        <div class="trip-card" data-trip-id="${tripId}">
-                            <div class="trip-info">
-                                <div class="trip-route">
-                                    <div class="route-point">📍 ${trip.origin}</div>
-                                    <div class="route-arrow">→</div>
-                                    <div class="route-point">📍 ${trip.destination}</div>
-                                </div>
-                                <div class="trip-details">
-                                    <span class="distance">${trip.distance} km</span>
-                                    <span class="fare">RD$${trip.totalFare.toFixed(2)}</span>
-                                    <span class="earnings">Ganas: RD$${driverEarnings}</span>
-                                </div>
-                                <div class="trip-user">
-                                    <span class="user-name">👤 ${trip.userName}</span>
-                                    <span class="trip-time">${formatTime(trip.createdAt.toDate())}</span>
-                                </div>
-                            </div>
-                            <div class="trip-actions">
-                                <button class="accept-btn" onclick="acceptTrip('${tripId}')">Aceptar</button>
-                                <button class="decline-btn" onclick="declineTrip('${tripId}')">Rechazar</button>
-                            </div>
+        let tripsHTML = '';
+        snapshot.forEach((doc) => {
+            const trip = doc.data();
+            const tripId = doc.id;
+            
+            // Calcular ganancias del conductor (95%)
+            const driverEarnings = (trip.totalFare * 0.95).toFixed(2);
+            
+            tripsHTML += `
+                <div class="trip-card" data-trip-id="${tripId}">
+                    <div class="trip-info">
+                        <div class="trip-route">
+                            <div class="route-point">📍 ${trip.origin}</div>
+                            <div class="route-arrow">→</div>
+                            <div class="route-point">📍 ${trip.destination}</div>
                         </div>
-                    `;
-                });
-                
-                tripsList.innerHTML = tripsHTML;
-            },
-            (error) => {
-                console.error('Error en listener de viajes:', error);
-                tripsList.innerHTML = `<p>Error: ${error.message}</p>`;
-            }
-        );
+                        <div class="trip-details">
+                            <span class="distance">${trip.distance} km</span>
+                            <span class="fare">RD$${trip.totalFare.toFixed(2)}</span>
+                            <span class="earnings">Ganas: RD$${driverEarnings}</span>
+                        </div>
+                        <div class="trip-user">
+                            <span class="user-name">👤 ${trip.userName}</span>
+                            <span class="trip-time">${formatTime(trip.createdAt.toDate())}</span>
+                        </div>
+                    </div>
+                    <div class="trip-actions">
+                        <button class="accept-btn" onclick="acceptTrip('${tripId}')">Aceptar</button>
+                        <button class="decline-btn" onclick="declineTrip('${tripId}')">Rechazar</button>
+                    </div>
+                </div>
+            `;
+        });
         
-    } catch (error) {
-        console.error('Error creando query de viajes:', error);
-        tripsList.innerHTML = '<p>Error conectando con Firebase</p>';
-    }
+        tripsList.innerHTML = tripsHTML;
+    });
 }
 
 // Formatear tiempo
 function formatTime(date) {
     const now = new Date();
     const diffMs = now - date;
-    const diffMins = Math.floor(diffMs / (1000 * 60));
+    const diffMins = Math.floor(diffMs / 60000);
     
-    if (diffMins < 1) return 'Ahora mismo';
-    if (diffMins < 60) return `Hace ${diffMins} min`;
-    
-    const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `Hace ${diffHours} h`;
-    
-    return date.toLocaleDateString('es-ES');
+    if (diffMins < 1) return 'Ahora';
+    if (diffMins < 60) return `${diffMins}m`;
+    return `${Math.floor(diffMins / 60)}h`;
 }
 
 // Aceptar viaje
 async function acceptTrip(tripId) {
     try {
-        // Verificar que Firebase esté inicializado
-        if (!checkFirebaseConnection()) {
-            throw new Error('Firebase no está disponible');
-        }
+        const currentUser = window.auth.currentUser;
+        if (!currentUser) return;
         
-        const user = window.auth.currentUser;
-        if (!user) return;
-        
-        // Obtener datos del conductor
-        const userDoc = await window.getDoc(window.doc(window.db, 'users', user.uid));
-        const userData = userDoc.data();
-        
-        // Actualizar estado del viaje
+        // Actualizar estado del viaje en Firebase
         await window.updateDoc(window.doc(window.db, 'trips', tripId), {
             status: 'accepted',
-            driverId: user.uid,
-            driverName: user.displayName || userData.firstName + ' ' + userData.lastName,
-            driverPhone: user.phoneNumber || userData.phone,
+            driverId: currentUser.uid,
+            driverName: currentUser.displayName || 'Conductor',
             acceptedAt: new Date()
         });
         
-        showAlert('¡Viaje aceptado!', 'success');
+        showAlert('Viaje aceptado! Dirigiéndote al cliente...', 'success');
         
-        // Actualizar UI
-        const tripCard = document.querySelector(`.trip-card[data-trip-id="${tripId}"]`);
-        if (tripCard) {
-            tripCard.remove();
+        // Detener listener de viajes disponibles
+        if (tripsListener) {
+            tripsListener();
+            tripsListener = null;
         }
         
+        // Mostrar interfaz de viaje activo
+        showActiveTrip(tripId);
+        
     } catch (error) {
-        console.error('Error aceptando viaje:', error);
+        console.error('Error accepting trip:', error);
         showAlert('Error al aceptar el viaje', 'error');
     }
 }
 
+// Mostrar viaje activo
+function showActiveTrip(tripId) {
+    const driverContent = document.getElementById('driverContent');
+    driverContent.innerHTML = `
+        <div class="active-trip">
+            <h3>🎯 Viaje en Progreso</h3>
+            <div class="trip-status">
+                <div class="status-step active">
+                    <span class="step-icon">✓</span>
+                    <span>Viaje aceptado</span>
+                </div>
+                <div class="status-step current">
+                    <span class="step-icon">🚗</span>
+                    <span>Dirigiendote al cliente</span>
+                </div>
+                <div class="status-step">
+                    <span class="step-icon">📍</span>
+                    <span>Viaje completado</span>
+                </div>
+            </div>
+            <div class="trip-actions">
+                <button class="complete-btn" onclick="completeTrip('${tripId}')">Completar Viaje</button>
+            </div>
+        </div>
+    `;
+}
+
 // Rechazar viaje
-async function declineTrip(tripId) {
+function declineTrip(tripId) {
+    showAlert('Viaje rechazado', 'warning');
+    loadAvailableTrips();
+}
+
+// Completar viaje
+async function completeTrip(tripId) {
     try {
-        // Verificar que Firebase esté inicializado
-        if (!checkFirebaseConnection()) {
-            throw new Error('Firebase no está disponible');
-        }
-        
-        // Actualizar estado del viaje
+        // Actualizar estado del viaje en Firebase
         await window.updateDoc(window.doc(window.db, 'trips', tripId), {
-            status: 'declined',
-            declinedAt: new Date()
+            status: 'completed',
+            completedAt: new Date()
         });
         
-        // Actualizar UI
-        const tripCard = document.querySelector(`.trip-card[data-trip-id="${tripId}"]`);
-        if (tripCard) {
-            tripCard.remove();
-        }
+        showAlert('Viaje completado! Ganancias agregadas', 'success');
+        
+        setTimeout(() => {
+            const driverContent = document.getElementById('driverContent');
+            driverContent.innerHTML = `
+                <div id="availableTrips" class="trips-container">
+                    <h3>📍 Viajes Disponibles</h3>
+                    <div class="trips-list" id="tripsList">
+                        <p>Buscando viajes cercanos...</p>
+                    </div>
+                </div>
+            `;
+            loadAvailableTrips();
+        }, 2000);
         
     } catch (error) {
-        console.error('Error rechazando viaje:', error);
+        console.error('Error completing trip:', error);
+        showAlert('Error al completar el viaje', 'error');
     }
 }
 
-// Mostrar sección específica
-function showSection(sectionId) {
-    const sections = document.querySelectorAll('.app-section');
-    sections.forEach(section => {
-        section.style.display = 'none';
+// Navegación del conductor
+function showDriverSection(section) {
+    document.querySelectorAll('#driverNavbar .nav-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    event.target.closest('.nav-item').classList.add('active');
+    
+    const driverContent = document.getElementById('driverContent');
+    
+    switch(section) {
+        case 'trips':
+            if (driverOnline) {
+                loadAvailableTrips();
+            } else {
+                driverContent.innerHTML = `
+                    <div class="no-trips">
+                        <h2>🚕 Esperando viajes...</h2>
+                        <p>Conéctate para recibir solicitudes</p>
+                    </div>
+                `;
+            }
+            break;
+        case 'earnings':
+            driverContent.innerHTML = `
+                <div class="earnings-section">
+                    <h2>💰 Mis Ganancias</h2>
+                    <div class="earnings-summary">
+                        <div class="earning-card">
+                            <span class="amount">RD$0.00</span>
+                            <span class="label">Hoy</span>
+                        </div>
+                        <div class="earning-card">
+                            <span class="amount">RD$0.00</span>
+                            <span class="label">Esta semana</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            break;
+        case 'profile':
+            const currentUser = window.auth?.currentUser;
+            const userName = currentUser?.displayName || 'Conductor';
+            driverContent.innerHTML = `
+                <div class="profile-section">
+                    <h2>👤 Mi Perfil</h2>
+                    <div class="profile-info">
+                        <p><strong>Nombre:</strong> ${userName}</p>
+                        <p><strong>Estado:</strong> ${driverOnline ? 'Conectado' : 'Desconectado'}</p>
+                    </div>
+                </div>
+            `;
+            break;
+    }
+}
+
+// Aplicar formato a números de teléfono
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('userPhone').addEventListener('input', function() {
+        formatPhoneNumber(this);
     });
     
-    document.getElementById(sectionId).style.display = 'block';
+    document.getElementById('driverPhone').addEventListener('input', function() {
+        formatPhoneNumber(this);
+    });
     
-    if (sectionId === 'activity') {
-        loadUserTrips();
+    window.onclick = function(event) {
+        const modal = document.getElementById('rideModal');
+        if (event.target === modal) {
+            closeRideModal();
+        }
+    };
+});
+
+// Mostrar formulario de login
+function showLogin(userType) {
+    document.querySelectorAll('.form-section').forEach(section => {
+        section.classList.remove('active');
+    });
+    document.getElementById(userType + '-login').classList.add('active');
+}
+
+// Mostrar formulario de registro
+function showRegister(userType) {
+    document.querySelectorAll('.form-section').forEach(section => {
+        section.classList.remove('active');
+    });
+    document.getElementById(userType + '-form').classList.add('active');
+}
+
+// Mostrar sección de conductor
+function showDriverSection() {
+    document.querySelectorAll('.form-section').forEach(section => {
+        section.classList.remove('active');
+    });
+    document.getElementById('driver-form').classList.add('active');
+}
+
+// Mostrar sección de navegación
+function showSection(section) {
+    // Actualizar botones activos
+    document.querySelectorAll('.nav-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    event.target.closest('.nav-item').classList.add('active');
+    
+    // Mostrar contenido según la sección
+    const mainApp = document.getElementById('mainApp');
+    const appContent = mainApp.querySelector('.app-content');
+    
+    switch(section) {
+        case 'home':
+            appContent.innerHTML = `
+                <div class="welcome-section">
+                    <h1 id="welcomeTitle">¡Bienvenido!</h1>
+                    <p id="welcomeSubtitle">Tu viaje comienza aquí</p>
+                </div>
+                <button class="main-ride-btn" onclick="requestRide()">
+                    🚗 Pedir un Taxi
+                </button>
+            `;
+            break;
+        case 'profile':
+            const currentUser = window.auth?.currentUser;
+            const userName = currentUser?.displayName || 'Usuario';
+            appContent.innerHTML = `
+                <div class="profile-section">
+                    <h1>👤 Mi Perfil</h1>
+                    <div class="profile-info">
+                        <p><strong>Nombre:</strong> ${userName}</p>
+                    </div>
+                </div>
+            `;
+            break;
+        case 'activity':
+            appContent.innerHTML = `
+                <div class="activity-section">
+                    <h1>📈 Actividad</h1>
+                    <p>Historial de viajes</p>
+                    <div id="activityList" class="activity-list">
+                        <p>Cargando viajes...</p>
+                    </div>
+                </div>
+            `;
+            loadUserTrips();
+            break;
     }
 }
 
-// Iniciar sesión de usuario
+// Iniciar sesión con Firebase
 async function loginUser(email, password) {
     try {
-        // Verificar que Firebase esté inicializado
-        if (!checkFirebaseConnection()) {
-            throw new Error('Firebase no está disponible');
-        }
-        
         const userCredential = await window.signInWithEmailAndPassword(
             window.auth, 
             email, 
             password
         );
-        
         return userCredential.user;
     } catch (error) {
-        console.error('Error en loginUser:', error);
         throw error;
     }
 }

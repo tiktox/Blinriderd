@@ -1,0 +1,22 @@
+// Reglas de Firestore para permitir lectura/escritura
+// Copia estas reglas en Firebase Console > Firestore Database > Rules
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Permitir acceso a usuarios autenticados
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Permitir acceso completo a viajes para usuarios autenticados
+    match /trips/{tripId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Regla temporal para desarrollo - CAMBIAR EN PRODUCCIÓN
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

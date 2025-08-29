@@ -1,5 +1,18 @@
-// Firebase initialization will be handled by HTML script tags
-// This ensures compatibility across different environments
+// Variables globales
+let tripsListener = null;
+let driverOnline = false;
+let map = null;
+let currentLocationMarker = null;
+let destinationMarker = null;
+let directionsService = null;
+let directionsRenderer = null;
+let autocompleteDestination = null;
+
+// Configuración de tarifas
+const FARE_CONFIG = {
+    pricePerKm: 30.00,
+    platformFee: 0.05
+};
 
 // Check Firebase connection
 function checkFirebaseConnection() {
@@ -7,32 +20,23 @@ function checkFirebaseConnection() {
         console.log('Firebase initialized successfully');
         return true;
     } else {
-        console.error('Firebase not properly initialized. Make sure Firebase scripts are loaded.');
-        console.log('Available Firebase functions:', {
-            auth: !!window.auth,
-            db: !!window.db,
-            collection: !!window.collection,
-            query: !!window.query,
-            where: !!window.where,
-            onSnapshot: !!window.onSnapshot
-        });
+        console.error('Firebase not properly initialized');
         return false;
     }
 }
 
-// Initialize Firebase when DOM is ready
-function initializeFirebaseApp() {
-    // This function should be called after Firebase scripts are loaded
-    // The actual initialization will be done in the HTML file
-    console.log('Checking Firebase initialization...');
-    
-    if (typeof firebase !== 'undefined') {
-        console.log('Firebase SDK loaded successfully');
-        return true;
-    } else {
-        console.error('Firebase SDK not loaded. Make sure to include Firebase scripts in your HTML.');
-        return false;
-    }
+// Mostrar alerta personalizada
+function showAlert(message, type = 'info') {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type}`;
+    alertDiv.textContent = message;
+    alertDiv.style.cssText = `
+        position: fixed; top: 20px; right: 20px; z-index: 9999;
+        padding: 15px 20px; border-radius: 8px; color: white;
+        background: ${type === 'success' ? '#22c55e' : type === 'error' ? '#ef4444' : type === 'warning' ? '#f59e0b' : '#3b82f6'};
+    `;
+    document.body.appendChild(alertDiv);
+    setTimeout(() => alertDiv.remove(), 3000);
 }
 
 // Crear partículas de fondo
@@ -49,29 +53,6 @@ function createParticles() {
         particle.style.animationDuration = (Math.random() * 4 + 4) + 's';
         particlesContainer.appendChild(particle);
     }
-}
-
-// Cambiar entre pestañas
-function switchTab(tab) {
-    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-    event.target.classList.add('active');
-    
-    document.querySelectorAll('.form-section').forEach(section => {
-        section.classList.remove('active');
-    });
-    document.getElementById(tab + '-form').classList.add('active');
-}
-
-// Mostrar alerta personalizada
-function showAlert(message, type = 'info') {
-    const alertDiv = document.createElement('div');
-    alertDiv.className = `alert alert-${type}`;
-    alertDiv.textContent = message;
-    
-    const container = document.querySelector('.form-container');
-    container.insertBefore(alertDiv, container.firstChild);
-    
-    setTimeout(() => alertDiv.remove(), 5000);
 }
 
 // Validación de formularios
@@ -138,210 +119,19 @@ async function registerUser(userData, userType) {
     }
 }
 
-// Manejar envío de formulario de usuario
-document.addEventListener('DOMContentLoaded', function() {
-    createParticles();
-    
-    document.getElementById('userRegistrationForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        
-        if (!validateForm('userRegistrationForm')) return;
-        
-        const submitBtn = this.querySelector('.submit-btn');
-        const originalText = submitBtn.textContent;
-        submitBtn.textContent = 'Creando cuenta...';
-        submitBtn.disabled = true;
-        
-        try {
-            const formData = new FormData(this);
-            const userData = Object.fromEntries(formData.entries());
-            
-            await registerUser(userData, 'user');
-            
-            showAlert('¡Cuenta creada exitosamente! Bienvenido a Deyconic Go', 'success');
-            this.reset();
-            
-        } catch (error) {
-            let errorMessage = 'Error al crear la cuenta';
-            
-            switch (error.code) {
-                case 'auth/email-already-in-use':
-                    errorMessage = 'Este correo ya está registrado';
-                    break;
-                case 'auth/weak-password':
-                    errorMessage = 'La contraseña es muy débil';
-                    break;
-                case 'auth/invalid-email':
-                    errorMessage = 'Correo electrónico inválido';
-                    break;
-            }
-            
-            showAlert(errorMessage, 'error');
-        } finally {
-            submitBtn.textContent = originalText;
-            submitBtn.disabled = false;
-        }
-    });
-
-    // Manejar login de usuario
-    document.getElementById('userLoginForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        
-        const submitBtn = this.querySelector('.submit-btn');
-        const originalText = submitBtn.textContent;
-        submitBtn.textContent = 'Iniciando sesión...';
-        submitBtn.disabled = true;
-        
-        try {
-            const formData = new FormData(this);
-            const { email, password } = Object.fromEntries(formData.entries());
-            
-            const user = await loginUser(email, password);
-            
-            showAlert('¡Inicio de sesión exitoso!', 'success');
-            setTimeout(() => {
-                showMainApp(user);
-            }, 1500);
-            this.reset();
-            
-        } catch (error) {
-            let errorMessage = 'Error al iniciar sesión';
-            
-            switch (error.code) {
-                case 'auth/user-not-found':
-                    errorMessage = 'Usuario no encontrado';
-                    break;
-                case 'auth/wrong-password':
-                    errorMessage = 'Contraseña incorrecta';
-                    break;
-                case 'auth/invalid-email':
-                    errorMessage = 'Correo electrónico inválido';
-                    break;
-                case 'auth/too-many-requests':
-                    errorMessage = 'Demasiados intentos. Intenta más tarde';
-                    break;
-            }
-            
-            showAlert(errorMessage, 'error');
-        } finally {
-            submitBtn.textContent = originalText;
-            submitBtn.disabled = false;
-        }
-    });
-
-    // Manejar login de conductor
-    document.getElementById('driverLoginForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        
-        const submitBtn = this.querySelector('.submit-btn');
-        const originalText = submitBtn.textContent;
-        submitBtn.textContent = 'Iniciando sesión...';
-        submitBtn.disabled = true;
-        
-        try {
-            const formData = new FormData(this);
-            const { email, password } = Object.fromEntries(formData.entries());
-            
-            const user = await loginUser(email, password);
-            
-            showAlert('¡Bienvenido conductor!', 'success');
-            setTimeout(() => {
-                showDriverApp(user);
-            }, 1500);
-            this.reset();
-            
-        } catch (error) {
-            let errorMessage = 'Error al iniciar sesión';
-            
-            switch (error.code) {
-                case 'auth/user-not-found':
-                    errorMessage = 'Conductor no encontrado';
-                    break;
-                case 'auth/wrong-password':
-                    errorMessage = 'Contraseña incorrecta';
-                    break;
-                case 'auth/invalid-email':
-                    errorMessage = 'Correo electrónico inválido';
-                    break;
-                case 'auth/too-many-requests':
-                    errorMessage = 'Demasiados intentos. Intenta más tarde';
-                    break;
-            }
-            
-            showAlert(errorMessage, 'error');
-        } finally {
-            submitBtn.textContent = originalText;
-            submitBtn.disabled = false;
-        }
-    });
-
-    // Manejar envío de formulario de conductor
-    document.getElementById('driverRegistrationForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        
-        if (!validateForm('driverRegistrationForm')) return;
-        
-        const submitBtn = this.querySelector('.submit-btn');
-        const originalText = submitBtn.textContent;
-        submitBtn.textContent = 'Enviando solicitud...';
-        submitBtn.disabled = true;
-        
-        try {
-            const formData = new FormData(this);
-            const userData = Object.fromEntries(formData.entries());
-            
-            await registerUser(userData, 'driver');
-            
-            showAlert('¡Solicitud enviada! Te contactaremos para verificar tus documentos', 'success');
-            this.reset();
-            
-        } catch (error) {
-            let errorMessage = 'Error al enviar la solicitud';
-            
-            switch (error.code) {
-                case 'auth/email-already-in-use':
-                    errorMessage = 'Este correo ya está registrado';
-                    break;
-                case 'auth/weak-password':
-                    errorMessage = 'La contraseña es muy débil';
-                    break;
-                case 'auth/invalid-email':
-                    errorMessage = 'Correo electrónico inválido';
-                    break;
-            }
-            
-            showAlert(errorMessage, 'error');
-        } finally {
-            submitBtn.textContent = originalText;
-            submitBtn.disabled = false;
-        }
-    });
-});
-
-// Formatear número de teléfono
-function formatPhoneNumber(input) {
-    let value = input.value.replace(/\D/g, '');
-    if (value.length >= 6) {
-        value = value.replace(/(\d{1})(\d{3})(\d{3})(\d{4})/, '+$1 ($2) $3-$4');
-    } else if (value.length >= 4) {
-        value = value.replace(/(\d{1})(\d{3})(\d+)/, '+$1 ($2) $3');
+// Iniciar sesión con Firebase
+async function loginUser(email, password) {
+    try {
+        const userCredential = await window.signInWithEmailAndPassword(
+            window.auth, 
+            email, 
+            password
+        );
+        return userCredential.user;
+    } catch (error) {
+        throw error;
     }
-    input.value = value;
 }
-
-// Variables globales para el mapa
-let map = null;
-let currentLocationMarker = null;
-let destinationMarker = null;
-let directionsService = null;
-let directionsRenderer = null;
-let autocompleteDestination = null;
-
-// Configuración de tarifas
-const FARE_CONFIG = {
-    pricePerKm: 30.00,
-    platformFee: 0.05 // 5%
-};
 
 // Mostrar modal de solicitud de viaje
 function requestRide() {
@@ -364,14 +154,7 @@ function initMap() {
     
     map = new google.maps.Map(document.getElementById('map'), {
         zoom: 13,
-        center: defaultLocation,
-        styles: [
-            { elementType: 'geometry', stylers: [{ color: '#1A1A1A' }] },
-            { elementType: 'labels.text.stroke', stylers: [{ color: '#0D0D0D' }] },
-            { elementType: 'labels.text.fill', stylers: [{ color: '#EAEAEA' }] },
-            { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2E2E2E' }] },
-            { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#3B82F6' }] }
-        ]
+        center: defaultLocation
     });
     
     directionsService = new google.maps.DirectionsService();
@@ -494,21 +277,17 @@ function calculateFare(directionsResult) {
     const route = directionsResult.routes[0];
     const leg = route.legs[0];
     
-    // Obtener distancia en kilómetros
     const distanceInMeters = leg.distance.value;
     const distanceInKm = (distanceInMeters / 1000).toFixed(2);
     
-    // Calcular tarifas
     const totalFare = parseFloat(distanceInKm) * FARE_CONFIG.pricePerKm;
     const platformCommission = totalFare * FARE_CONFIG.platformFee;
     const driverEarnings = totalFare - platformCommission;
     
-    // Mostrar información
     document.getElementById('tripDistance').textContent = `${distanceInKm} km`;
     document.getElementById('totalFare').textContent = `RD$${totalFare.toFixed(2)}`;
     document.getElementById('fareInfo').style.display = 'block';
     
-    // Guardar datos para confirmación
     window.currentTrip = {
         distance: distanceInKm,
         totalFare: totalFare,
@@ -516,45 +295,6 @@ function calculateFare(directionsResult) {
         driverEarnings: driverEarnings,
         duration: leg.duration.text
     };
-}
-
-// Mostrar interfaz principal después del login
-function showMainApp(user) {
-    // Ocultar contenedor de autenticación
-    document.getElementById('authContainer').style.display = 'none';
-    
-    // Mostrar barra de tareas y aplicación principal
-    document.getElementById('navbar').style.display = 'block';
-    document.getElementById('mainApp').style.display = 'block';
-    
-    // Personalizar mensajes de bienvenida
-    if (user && user.displayName) {
-        const firstName = user.displayName.split(' ')[0];
-        document.getElementById('welcomeTitle').textContent = `¡Hola ${firstName}!`;
-        document.getElementById('welcomeSubtitle').textContent = '¿A dónde quieres ir hoy?';
-    }
-}
-
-// Cerrar sesión
-function logout() {
-    if (window.auth && window.auth.currentUser) {
-        window.auth.signOut().then(() => {
-            // Mostrar contenedor de autenticación
-            document.getElementById('authContainer').style.display = 'flex';
-            
-            // Ocultar barra de tareas y aplicación principal
-            document.getElementById('navbar').style.display = 'none';
-            document.getElementById('mainApp').style.display = 'none';
-            
-            // Mostrar formulario de usuario por defecto
-            document.querySelectorAll('.form-section').forEach(section => {
-                section.classList.remove('active');
-            });
-            document.getElementById('user-form').classList.add('active');
-            
-            showAlert('Sesión cerrada correctamente', 'success');
-        });
-    }
 }
 
 // Confirmar viaje
@@ -577,12 +317,8 @@ function confirmRide() {
         return;
     }
     
-    // Cerrar modal y mostrar estado de búsqueda
     closeRideModal();
-    
-    // Guardar viaje en Firebase y enviarlo a conductores
     saveTrip(window.currentTrip, currentLocation, destination);
-    
     showAlert(`¡Viaje enviado a conductores! Total: RD$${window.currentTrip.totalFare.toFixed(2)}`, 'success');
 }
 
@@ -601,7 +337,6 @@ async function saveTrip(tripData, origin, destination) {
             return;
         }
         
-        const tripId = Date.now().toString();
         const tripDoc = {
             userId: user.uid,
             userName: user.displayName || 'Usuario',
@@ -613,20 +348,17 @@ async function saveTrip(tripData, origin, destination) {
             platformCommission: tripData.platformCommission,
             driverEarnings: tripData.driverEarnings,
             duration: tripData.duration,
-            status: 'searching', // searching -> accepted -> in_progress -> completed
+            status: 'searching',
             createdAt: new Date(),
             timestamp: Date.now()
         };
         
         console.log('Saving trip with data:', tripDoc);
         
-        await window.setDoc(window.doc(window.db, 'trips', tripId), tripDoc);
+        const docRef = await window.addDoc(window.collection(window.db, 'trips'), tripDoc);
         
-        console.log('Viaje guardado con ID:', tripId);
-        console.log('Enviando a conductores conectados...');
-        
-        // Mostrar estado de búsqueda inmediatamente
-        showSearchingDriver(tripId);
+        console.log('Viaje guardado con ID:', docRef.id);
+        showSearchingDriver(docRef.id);
         
     } catch (error) {
         console.error('Error saving trip:', error);
@@ -641,17 +373,12 @@ function showSearchingDriver(tripId) {
     
     appContent.innerHTML = `
         <div class="searching-section">
-            <div class="searching-animation">
-                <div class="pulse-circle"></div>
-                <div class="car-icon">🚗</div>
-            </div>
             <h2>Buscando conductor...</h2>
             <p>Te conectaremos con un conductor cercano</p>
             <button class="cancel-trip-btn" onclick="cancelTrip('${tripId}')">Cancelar Viaje</button>
         </div>
     `;
     
-    // Escuchar cambios en el estado del viaje
     const tripRef = window.doc(window.db, 'trips', tripId);
     window.onSnapshot(tripRef, (doc) => {
         if (doc.exists()) {
@@ -672,25 +399,9 @@ function showTripAccepted(trip) {
     
     appContent.innerHTML = `
         <div class="trip-accepted-section">
-            <div class="driver-info">
-                <h2>✅ Conductor asignado</h2>
-                <p><strong>Conductor:</strong> ${trip.driverName}</p>
-                <p>El conductor se dirige hacia ti</p>
-            </div>
-            <div class="trip-status">
-                <div class="status-step completed">
-                    <span class="step-icon">✓</span>
-                    <span>Viaje confirmado</span>
-                </div>
-                <div class="status-step current">
-                    <span class="step-icon">🚗</span>
-                    <span>Conductor en camino</span>
-                </div>
-                <div class="status-step">
-                    <span class="step-icon">📍</span>
-                    <span>Viaje completado</span>
-                </div>
-            </div>
+            <h2>✅ Conductor asignado</h2>
+            <p><strong>Conductor:</strong> ${trip.driverName}</p>
+            <p>El conductor se dirige hacia ti</p>
         </div>
     `;
 }
@@ -702,21 +413,14 @@ function showTripCompleted(trip) {
     
     appContent.innerHTML = `
         <div class="trip-completed-section">
-            <div class="completion-message">
-                <h2>🎉 Viaje completado</h2>
-                <p>¡Gracias por usar Blinriderd!</p>
-                <div class="trip-summary">
-                    <p><strong>Total pagado:</strong> RD$${trip.totalFare.toFixed(2)}</p>
-                    <p><strong>Distancia:</strong> ${trip.distance} km</p>
-                </div>
-            </div>
+            <h2>🎉 Viaje completado</h2>
+            <p>¡Gracias por usar Blinriderd!</p>
+            <p><strong>Total:</strong> RD$${trip.totalFare.toFixed(2)}</p>
             <button class="home-btn" onclick="showSection('home')">Volver al inicio</button>
         </div>
     `;
     
-    setTimeout(() => {
-        showSection('home');
-    }, 5000);
+    setTimeout(() => showSection('home'), 5000);
 }
 
 // Cancelar viaje
@@ -744,7 +448,6 @@ async function loadUserTrips() {
         const activityList = document.getElementById('activityList');
         activityList.innerHTML = '<p>Cargando viajes...</p>';
         
-        // Consulta real de Firebase para obtener viajes del usuario
         const userTripsQuery = window.query(
             window.collection(window.db, 'trips'),
             window.where('userId', '==', user.uid)
@@ -763,41 +466,27 @@ async function loadUserTrips() {
                 trips.push({ id: doc.id, ...doc.data() });
             });
             
-            // Ordenar por fecha más reciente
             trips.sort((a, b) => b.timestamp - a.timestamp);
             
             trips.forEach((trip) => {
                 const statusText = {
                     'searching': 'Buscando conductor',
                     'accepted': 'Conductor asignado',
-                    'in_progress': 'En progreso',
                     'completed': 'Completado',
                     'cancelled': 'Cancelado'
-                };
-                
-                const statusClass = {
-                    'searching': 'status-searching',
-                    'accepted': 'status-accepted',
-                    'in_progress': 'status-progress',
-                    'completed': 'status-completed',
-                    'cancelled': 'status-cancelled'
                 };
                 
                 tripsHTML += `
                     <div class="trip-history-card">
                         <div class="trip-header">
-                            <span class="trip-date">${formatTripDate(trip.createdAt.toDate())}</span>
-                            <span class="trip-status ${statusClass[trip.status]}">${statusText[trip.status]}</span>
+                            <span class="trip-status">${statusText[trip.status]}</span>
                         </div>
                         <div class="trip-route">
-                            <div class="route-point">📍 ${trip.origin}</div>
-                            <div class="route-arrow">→</div>
-                            <div class="route-point">📍 ${trip.destination}</div>
+                            <div>📍 ${trip.origin}</div>
+                            <div>📍 ${trip.destination}</div>
                         </div>
                         <div class="trip-details">
-                            <span class="trip-distance">${trip.distance} km</span>
-                            <span class="trip-fare">RD$${trip.totalFare.toFixed(2)}</span>
-                            ${trip.driverName ? `<span class="trip-driver">👤 ${trip.driverName}</span>` : ''}
+                            <span>RD$${trip.totalFare.toFixed(2)}</span>
                         </div>
                     </div>
                 `;
@@ -812,20 +501,16 @@ async function loadUserTrips() {
     }
 }
 
-// Formatear fecha del viaje
-function formatTripDate(date) {
-    const now = new Date();
-    const diffMs = now - date;
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+// Mostrar interfaz principal después del login
+function showMainApp(user) {
+    document.getElementById('authContainer').style.display = 'none';
+    document.getElementById('navbar').style.display = 'block';
+    document.getElementById('mainApp').style.display = 'block';
     
-    if (diffDays === 0) {
-        return date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-    } else if (diffDays === 1) {
-        return 'Ayer';
-    } else if (diffDays < 7) {
-        return `Hace ${diffDays} días`;
-    } else {
-        return date.toLocaleDateString('es-ES');
+    if (user && user.displayName) {
+        const firstName = user.displayName.split(' ')[0];
+        document.getElementById('welcomeTitle').textContent = `¡Hola ${firstName}!`;
+        document.getElementById('welcomeSubtitle').textContent = '¿A dónde quieres ir hoy?';
     }
 }
 
@@ -837,15 +522,9 @@ function showDriverApp(user) {
     
     document.getElementById('driverNavbar').style.display = 'block';
     document.getElementById('driverApp').style.display = 'block';
-    
-    if (user && user.displayName) {
-        const firstName = user.displayName.split(' ')[0];
-        document.querySelector('#driverApp .welcome-section h1').textContent = `¡Hola ${firstName}!`;
-    }
 }
 
 // Alternar estado del conductor
-let driverOnline = false;
 function toggleDriverStatus() {
     if (!checkFirebaseConnection()) {
         showAlert('Error: Firebase no disponible', 'error');
@@ -872,12 +551,8 @@ function toggleDriverStatus() {
             </div>
         `;
         
-        // Esperar un poco para que el DOM se actualice
-        setTimeout(() => {
-            loadAvailableTrips();
-        }, 100);
+        setTimeout(() => loadAvailableTrips(), 100);
     } else {
-        // Detener listener si está activo
         if (tripsListener) {
             tripsListener();
             tripsListener = null;
@@ -897,8 +572,7 @@ function toggleDriverStatus() {
     }
 }
 
-// Cargar viajes disponibles desde Firebase
-let tripsListener = null;
+// Cargar viajes disponibles en tiempo real
 function loadAvailableTrips() {
     const tripsList = document.getElementById('tripsList');
     if (!tripsList) {
@@ -914,17 +588,14 @@ function loadAvailableTrips() {
     tripsList.innerHTML = '<p>Buscando viajes cercanos...</p>';
     
     try {
-        // Consulta en tiempo real de viajes con estado "searching"
         const tripsRef = window.collection(window.db, 'trips');
         const searchingTrips = window.query(tripsRef, window.where('status', '==', 'searching'));
         
         console.log('Setting up trips listener...');
         
-        // Escuchar cambios en tiempo real
         tripsListener = window.onSnapshot(searchingTrips, 
             (snapshot) => {
-                console.log(`Snapshot received: ${snapshot.size} trips`);
-                console.log('Snapshot empty:', snapshot.empty);
+                console.log(`Found ${snapshot.size} trips`);
                 
                 if (snapshot.empty) {
                     tripsList.innerHTML = '<p>No hay viajes disponibles</p>';
@@ -936,15 +607,11 @@ function loadAvailableTrips() {
                     const trip = doc.data();
                     const tripId = doc.id;
                     
-                    console.log('Trip data:', tripId, trip);
-                    
-                    // Validar que el viaje tenga los campos necesarios
                     if (!trip.origin || !trip.destination || !trip.totalFare) {
-                        console.warn('Trip missing required fields:', tripId, trip);
+                        console.warn('Trip missing required fields:', tripId);
                         return;
                     }
                     
-                    // Calcular ganancias del conductor (95%)
                     const driverEarnings = (trip.totalFare * 0.95).toFixed(2);
                     
                     tripsHTML += `
@@ -962,7 +629,7 @@ function loadAvailableTrips() {
                                 </div>
                                 <div class="trip-user">
                                     <span class="user-name">👤 ${trip.userName || 'Usuario'}</span>
-                                    <span class="trip-time">${trip.createdAt ? formatTime(trip.createdAt.toDate()) : 'Ahora'}</span>
+                                    <span class="trip-time">Ahora</span>
                                 </div>
                             </div>
                             <div class="trip-actions">
@@ -987,26 +654,12 @@ function loadAvailableTrips() {
     }
 }
 
-
-
-// Formatear tiempo
-function formatTime(date) {
-    const now = new Date();
-    const diffMs = now - date;
-    const diffMins = Math.floor(diffMs / 60000);
-    
-    if (diffMins < 1) return 'Ahora';
-    if (diffMins < 60) return `${diffMins}m`;
-    return `${Math.floor(diffMins / 60)}h`;
-}
-
 // Aceptar viaje
 async function acceptTrip(tripId) {
     try {
         const currentUser = window.auth.currentUser;
         if (!currentUser) return;
         
-        // Actualizar estado del viaje en Firebase
         await window.updateDoc(window.doc(window.db, 'trips', tripId), {
             status: 'accepted',
             driverId: currentUser.uid,
@@ -1016,13 +669,11 @@ async function acceptTrip(tripId) {
         
         showAlert('Viaje aceptado! Dirigiéndote al cliente...', 'success');
         
-        // Detener listener de viajes disponibles
         if (tripsListener) {
             tripsListener();
             tripsListener = null;
         }
         
-        // Mostrar interfaz de viaje activo
         showActiveTrip(tripId);
         
     } catch (error) {
@@ -1037,20 +688,6 @@ function showActiveTrip(tripId) {
     driverContent.innerHTML = `
         <div class="active-trip">
             <h3>🎯 Viaje en Progreso</h3>
-            <div class="trip-status">
-                <div class="status-step active">
-                    <span class="step-icon">✓</span>
-                    <span>Viaje aceptado</span>
-                </div>
-                <div class="status-step current">
-                    <span class="step-icon">🚗</span>
-                    <span>Dirigiendote al cliente</span>
-                </div>
-                <div class="status-step">
-                    <span class="step-icon">📍</span>
-                    <span>Viaje completado</span>
-                </div>
-            </div>
             <div class="trip-actions">
                 <button class="complete-btn" onclick="completeTrip('${tripId}')">Completar Viaje</button>
             </div>
@@ -1061,13 +698,11 @@ function showActiveTrip(tripId) {
 // Rechazar viaje
 function declineTrip(tripId) {
     showAlert('Viaje rechazado', 'warning');
-    loadAvailableTrips();
 }
 
 // Completar viaje
 async function completeTrip(tripId) {
     try {
-        // Actualizar estado del viaje en Firebase
         await window.updateDoc(window.doc(window.db, 'trips', tripId), {
             status: 'completed',
             completedAt: new Date()
@@ -1133,10 +768,6 @@ function showDriverSection(section) {
                             <span class="amount">RD$0.00</span>
                             <span class="label">Hoy</span>
                         </div>
-                        <div class="earning-card">
-                            <span class="amount">RD$0.00</span>
-                            <span class="label">Esta semana</span>
-                        </div>
                     </div>
                 </div>
             `;
@@ -1157,63 +788,33 @@ function showDriverSection(section) {
     }
 }
 
-// Aplicar formato a números de teléfono
-document.addEventListener('DOMContentLoaded', function() {
-    // Esperar a que Firebase se inicialice
-    setTimeout(() => {
-        console.log('Checking Firebase initialization after DOM load...');
-        checkFirebaseConnection();
-    }, 1000);
-    
-    document.getElementById('userPhone').addEventListener('input', function() {
-        formatPhoneNumber(this);
-    });
-    
-    document.getElementById('driverPhone').addEventListener('input', function() {
-        formatPhoneNumber(this);
-    });
-    
-    window.onclick = function(event) {
-        const modal = document.getElementById('rideModal');
-        if (event.target === modal) {
-            closeRideModal();
-        }
-    };
-});
-
-// Mostrar formulario de login
-function showLogin(userType) {
-    document.querySelectorAll('.form-section').forEach(section => {
-        section.classList.remove('active');
-    });
-    document.getElementById(userType + '-login').classList.add('active');
-}
-
-// Mostrar formulario de registro
-function showRegister(userType) {
-    document.querySelectorAll('.form-section').forEach(section => {
-        section.classList.remove('active');
-    });
-    document.getElementById(userType + '-form').classList.add('active');
-}
-
-// Mostrar sección de conductor
-function showDriverSection() {
-    document.querySelectorAll('.form-section').forEach(section => {
-        section.classList.remove('active');
-    });
-    document.getElementById('driver-form').classList.add('active');
+// Cerrar sesión
+function logout() {
+    if (window.auth && window.auth.currentUser) {
+        window.auth.signOut().then(() => {
+            document.getElementById('authContainer').style.display = 'flex';
+            document.getElementById('navbar').style.display = 'none';
+            document.getElementById('mainApp').style.display = 'none';
+            document.getElementById('driverNavbar').style.display = 'none';
+            document.getElementById('driverApp').style.display = 'none';
+            
+            document.querySelectorAll('.form-section').forEach(section => {
+                section.classList.remove('active');
+            });
+            document.getElementById('user-form').classList.add('active');
+            
+            showAlert('Sesión cerrada correctamente', 'success');
+        });
+    }
 }
 
 // Mostrar sección de navegación
 function showSection(section) {
-    // Actualizar botones activos
     document.querySelectorAll('.nav-item').forEach(item => {
         item.classList.remove('active');
     });
     event.target.closest('.nav-item').classList.add('active');
     
-    // Mostrar contenido según la sección
     const mainApp = document.getElementById('mainApp');
     const appContent = mainApp.querySelector('.app-content');
     
@@ -1256,16 +857,226 @@ function showSection(section) {
     }
 }
 
-// Iniciar sesión con Firebase
-async function loginUser(email, password) {
-    try {
-        const userCredential = await window.signInWithEmailAndPassword(
-            window.auth, 
-            email, 
-            password
-        );
-        return userCredential.user;
-    } catch (error) {
-        throw error;
-    }
+// Mostrar formularios
+function showLogin(userType) {
+    document.querySelectorAll('.form-section').forEach(section => {
+        section.classList.remove('active');
+    });
+    document.getElementById(userType + '-login').classList.add('active');
 }
+
+function showRegister(userType) {
+    document.querySelectorAll('.form-section').forEach(section => {
+        section.classList.remove('active');
+    });
+    document.getElementById(userType + '-form').classList.add('active');
+}
+
+function showDriverSection() {
+    document.querySelectorAll('.form-section').forEach(section => {
+        section.classList.remove('active');
+    });
+    document.getElementById('driver-form').classList.add('active');
+}
+
+// Formatear número de teléfono
+function formatPhoneNumber(input) {
+    let value = input.value.replace(/\D/g, '');
+    if (value.length >= 6) {
+        value = value.replace(/(\d{1})(\d{3})(\d{3})(\d{4})/, '+$1 ($2) $3-$4');
+    } else if (value.length >= 4) {
+        value = value.replace(/(\d{1})(\d{3})(\d+)/, '+$1 ($2) $3');
+    }
+    input.value = value;
+}
+
+// Event listeners
+document.addEventListener('DOMContentLoaded', function() {
+    createParticles();
+    
+    setTimeout(() => {
+        console.log('Checking Firebase initialization...');
+        checkFirebaseConnection();
+    }, 1000);
+    
+    // User registration
+    document.getElementById('userRegistrationForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        if (!validateForm('userRegistrationForm')) return;
+        
+        const submitBtn = this.querySelector('.submit-btn');
+        const originalText = submitBtn.textContent;
+        submitBtn.textContent = 'Creando cuenta...';
+        submitBtn.disabled = true;
+        
+        try {
+            const formData = new FormData(this);
+            const userData = Object.fromEntries(formData.entries());
+            
+            await registerUser(userData, 'user');
+            
+            showAlert('¡Cuenta creada exitosamente!', 'success');
+            this.reset();
+            
+        } catch (error) {
+            let errorMessage = 'Error al crear la cuenta';
+            
+            switch (error.code) {
+                case 'auth/email-already-in-use':
+                    errorMessage = 'Este correo ya está registrado';
+                    break;
+                case 'auth/weak-password':
+                    errorMessage = 'La contraseña es muy débil';
+                    break;
+                case 'auth/invalid-email':
+                    errorMessage = 'Correo electrónico inválido';
+                    break;
+            }
+            
+            showAlert(errorMessage, 'error');
+        } finally {
+            submitBtn.textContent = originalText;
+            submitBtn.disabled = false;
+        }
+    });
+
+    // User login
+    document.getElementById('userLoginForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const submitBtn = this.querySelector('.submit-btn');
+        const originalText = submitBtn.textContent;
+        submitBtn.textContent = 'Iniciando sesión...';
+        submitBtn.disabled = true;
+        
+        try {
+            const formData = new FormData(this);
+            const { email, password } = Object.fromEntries(formData.entries());
+            
+            const user = await loginUser(email, password);
+            
+            showAlert('¡Inicio de sesión exitoso!', 'success');
+            setTimeout(() => {
+                showMainApp(user);
+            }, 1500);
+            this.reset();
+            
+        } catch (error) {
+            let errorMessage = 'Error al iniciar sesión';
+            
+            switch (error.code) {
+                case 'auth/user-not-found':
+                    errorMessage = 'Usuario no encontrado';
+                    break;
+                case 'auth/wrong-password':
+                    errorMessage = 'Contraseña incorrecta';
+                    break;
+                case 'auth/invalid-email':
+                    errorMessage = 'Correo electrónico inválido';
+                    break;
+            }
+            
+            showAlert(errorMessage, 'error');
+        } finally {
+            submitBtn.textContent = originalText;
+            submitBtn.disabled = false;
+        }
+    });
+
+    // Driver login
+    document.getElementById('driverLoginForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const submitBtn = this.querySelector('.submit-btn');
+        const originalText = submitBtn.textContent;
+        submitBtn.textContent = 'Iniciando sesión...';
+        submitBtn.disabled = true;
+        
+        try {
+            const formData = new FormData(this);
+            const { email, password } = Object.fromEntries(formData.entries());
+            
+            const user = await loginUser(email, password);
+            
+            showAlert('¡Bienvenido conductor!', 'success');
+            setTimeout(() => {
+                showDriverApp(user);
+            }, 1500);
+            this.reset();
+            
+        } catch (error) {
+            let errorMessage = 'Error al iniciar sesión';
+            
+            switch (error.code) {
+                case 'auth/user-not-found':
+                    errorMessage = 'Conductor no encontrado';
+                    break;
+                case 'auth/wrong-password':
+                    errorMessage = 'Contraseña incorrecta';
+                    break;
+            }
+            
+            showAlert(errorMessage, 'error');
+        } finally {
+            submitBtn.textContent = originalText;
+            submitBtn.disabled = false;
+        }
+    });
+
+    // Driver registration
+    document.getElementById('driverRegistrationForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        if (!validateForm('driverRegistrationForm')) return;
+        
+        const submitBtn = this.querySelector('.submit-btn');
+        const originalText = submitBtn.textContent;
+        submitBtn.textContent = 'Enviando solicitud...';
+        submitBtn.disabled = true;
+        
+        try {
+            const formData = new FormData(this);
+            const userData = Object.fromEntries(formData.entries());
+            
+            await registerUser(userData, 'driver');
+            
+            showAlert('¡Solicitud enviada!', 'success');
+            this.reset();
+            
+        } catch (error) {
+            let errorMessage = 'Error al enviar la solicitud';
+            
+            switch (error.code) {
+                case 'auth/email-already-in-use':
+                    errorMessage = 'Este correo ya está registrado';
+                    break;
+                case 'auth/weak-password':
+                    errorMessage = 'La contraseña es muy débil';
+                    break;
+            }
+            
+            showAlert(errorMessage, 'error');
+        } finally {
+            submitBtn.textContent = originalText;
+            submitBtn.disabled = false;
+        }
+    });
+    
+    // Phone formatting
+    document.getElementById('userPhone').addEventListener('input', function() {
+        formatPhoneNumber(this);
+    });
+    
+    document.getElementById('driverPhone').addEventListener('input', function() {
+        formatPhoneNumber(this);
+    });
+    
+    // Modal click outside
+    window.onclick = function(event) {
+        const modal = document.getElementById('rideModal');
+        if (event.target === modal) {
+            closeRideModal();
+        }
+    };
+});

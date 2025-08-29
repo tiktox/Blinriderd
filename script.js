@@ -1125,34 +1125,10 @@ function showDriverSection(section) {
             }
             break;
         case 'earnings':
-            driverContent.innerHTML = `
-                <div class="earnings-section">
-                    <h2>💰 Mis Ganancias</h2>
-                    <div class="earnings-summary">
-                        <div class="earning-card">
-                            <span class="amount">RD$0.00</span>
-                            <span class="label">Hoy</span>
-                        </div>
-                        <div class="earning-card">
-                            <span class="amount">RD$0.00</span>
-                            <span class="label">Esta semana</span>
-                        </div>
-                    </div>
-                </div>
-            `;
+            loadDriverEarnings();
             break;
         case 'profile':
-            const currentUser = window.auth?.currentUser;
-            const userName = currentUser?.displayName || 'Conductor';
-            driverContent.innerHTML = `
-                <div class="profile-section">
-                    <h2>👤 Mi Perfil</h2>
-                    <div class="profile-info">
-                        <p><strong>Nombre:</strong> ${userName}</p>
-                        <p><strong>Estado:</strong> ${driverOnline ? 'Conectado' : 'Desconectado'}</p>
-                    </div>
-                </div>
-            `;
+            loadDriverProfile();
             break;
     }
 }
@@ -1253,6 +1229,279 @@ function showSection(section) {
             `;
             loadUserTrips();
             break;
+    }
+}
+
+// Cargar perfil del conductor
+async function loadDriverProfile() {
+    const driverContent = document.getElementById('driverContent');
+    const currentUser = window.auth?.currentUser;
+    
+    if (!currentUser) {
+        driverContent.innerHTML = '<p>Error: Usuario no autenticado</p>';
+        return;
+    }
+    
+    try {
+        // Obtener datos del conductor desde Firestore
+        const userDoc = await window.getDoc(window.doc(window.db, 'users', currentUser.uid));
+        
+        if (userDoc.exists()) {
+            const userData = userDoc.data();
+            const userName = currentUser.displayName || `${userData.firstName} ${userData.lastName}`;
+            const userEmail = currentUser.email;
+            const userPhone = userData.phone || 'No registrado';
+            
+            driverContent.innerHTML = `
+                <div class="profile-section">
+                    <h2>👤 Mi Perfil</h2>
+                    <div class="profile-card">
+                        <div class="profile-avatar">
+                            <div class="avatar-circle">
+                                <span class="avatar-text">${userName.charAt(0).toUpperCase()}</span>
+                            </div>
+                        </div>
+                        <div class="profile-info">
+                            <div class="info-item">
+                                <span class="info-label">Nombre completo:</span>
+                                <span class="info-value">${userName}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Correo electrónico:</span>
+                                <span class="info-value">${userEmail}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Teléfono:</span>
+                                <span class="info-value">${userPhone}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Estado:</span>
+                                <span class="info-value status-${driverOnline ? 'online' : 'offline'}">
+                                    ${driverOnline ? '🟢 Conectado' : '🔴 Desconectado'}
+                                </span>
+                            </div>
+                            ${userData.vehicle ? `
+                                <div class="vehicle-info">
+                                    <h3>🚗 Información del Vehículo</h3>
+                                    <div class="info-item">
+                                        <span class="info-label">Vehículo:</span>
+                                        <span class="info-value">${userData.vehicle.brand} ${userData.vehicle.model} ${userData.vehicle.year}</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <span class="info-label">Color:</span>
+                                        <span class="info-value">${userData.vehicle.color}</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <span class="info-label">Placa:</span>
+                                        <span class="info-value">${userData.vehicle.plate}</span>
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        } else {
+            // Si no hay datos en Firestore, mostrar datos básicos
+            const userName = currentUser.displayName || 'Conductor';
+            const userEmail = currentUser.email;
+            
+            driverContent.innerHTML = `
+                <div class="profile-section">
+                    <h2>👤 Mi Perfil</h2>
+                    <div class="profile-card">
+                        <div class="profile-avatar">
+                            <div class="avatar-circle">
+                                <span class="avatar-text">${userName.charAt(0).toUpperCase()}</span>
+                            </div>
+                        </div>
+                        <div class="profile-info">
+                            <div class="info-item">
+                                <span class="info-label">Nombre:</span>
+                                <span class="info-value">${userName}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Correo:</span>
+                                <span class="info-value">${userEmail}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Estado:</span>
+                                <span class="info-value status-${driverOnline ? 'online' : 'offline'}">
+                                    ${driverOnline ? '🟢 Conectado' : '🔴 Desconectado'}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error loading driver profile:', error);
+        const userName = currentUser.displayName || 'Conductor';
+        
+        driverContent.innerHTML = `
+            <div class="profile-section">
+                <h2>👤 Mi Perfil</h2>
+                <div class="profile-card">
+                    <div class="profile-info">
+                        <div class="info-item">
+                            <span class="info-label">Nombre:</span>
+                            <span class="info-value">${userName}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Estado:</span>
+                            <span class="info-value status-${driverOnline ? 'online' : 'offline'}">
+                                ${driverOnline ? '🟢 Conectado' : '🔴 Desconectado'}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+}
+
+// Cargar ganancias del conductor
+async function loadDriverEarnings() {
+    const driverContent = document.getElementById('driverContent');
+    const currentUser = window.auth?.currentUser;
+    
+    if (!currentUser) {
+        driverContent.innerHTML = '<p>Error: Usuario no autenticado</p>';
+        return;
+    }
+    
+    driverContent.innerHTML = `
+        <div class="earnings-section">
+            <h2>💰 Mis Ganancias</h2>
+            <div class="earnings-summary">
+                <div class="earning-card">
+                    <div class="earning-amount">RD$0.00</div>
+                    <div class="earning-label">Hoy</div>
+                    <div class="earning-trips">0 viajes</div>
+                </div>
+                <div class="earning-card">
+                    <div class="earning-amount">RD$0.00</div>
+                    <div class="earning-label">Esta semana</div>
+                    <div class="earning-trips">0 viajes</div>
+                </div>
+                <div class="earning-card">
+                    <div class="earning-amount">RD$0.00</div>
+                    <div class="earning-label">Este mes</div>
+                    <div class="earning-trips">0 viajes</div>
+                </div>
+            </div>
+            <div class="earnings-details">
+                <h3>📈 Historial de Ganancias</h3>
+                <div id="earningsHistory" class="earnings-history">
+                    <p>Cargando historial...</p>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Cargar historial de ganancias
+    try {
+        const completedTripsQuery = window.query(
+            window.collection(window.db, 'trips'),
+            window.where('driverId', '==', currentUser.uid),
+            window.where('status', '==', 'completed')
+        );
+        
+        window.onSnapshot(completedTripsQuery, (snapshot) => {
+            const earningsHistory = document.getElementById('earningsHistory');
+            
+            if (snapshot.empty) {
+                earningsHistory.innerHTML = '<p>Aún no has completado viajes</p>';
+                return;
+            }
+            
+            let totalEarnings = 0;
+            let todayEarnings = 0;
+            let weekEarnings = 0;
+            let monthEarnings = 0;
+            let todayTrips = 0;
+            let weekTrips = 0;
+            let monthTrips = 0;
+            
+            const today = new Date();
+            const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+            const startOfWeek = new Date(today.getTime() - (today.getDay() * 24 * 60 * 60 * 1000));
+            const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+            
+            let historyHTML = '';
+            const trips = [];
+            
+            snapshot.forEach((doc) => {
+                const trip = doc.data();
+                trips.push({ id: doc.id, ...trip });
+                
+                const driverEarning = trip.totalFare * 0.95; // 95% para el conductor
+                totalEarnings += driverEarning;
+                
+                const tripDate = trip.completedAt.toDate();
+                
+                if (tripDate >= startOfDay) {
+                    todayEarnings += driverEarning;
+                    todayTrips++;
+                }
+                if (tripDate >= startOfWeek) {
+                    weekEarnings += driverEarning;
+                    weekTrips++;
+                }
+                if (tripDate >= startOfMonth) {
+                    monthEarnings += driverEarning;
+                    monthTrips++;
+                }
+            });
+            
+            // Actualizar tarjetas de resumen
+            const earningCards = document.querySelectorAll('.earning-card');
+            if (earningCards.length >= 3) {
+                earningCards[0].innerHTML = `
+                    <div class="earning-amount">RD$${todayEarnings.toFixed(2)}</div>
+                    <div class="earning-label">Hoy</div>
+                    <div class="earning-trips">${todayTrips} viajes</div>
+                `;
+                earningCards[1].innerHTML = `
+                    <div class="earning-amount">RD$${weekEarnings.toFixed(2)}</div>
+                    <div class="earning-label">Esta semana</div>
+                    <div class="earning-trips">${weekTrips} viajes</div>
+                `;
+                earningCards[2].innerHTML = `
+                    <div class="earning-amount">RD$${monthEarnings.toFixed(2)}</div>
+                    <div class="earning-label">Este mes</div>
+                    <div class="earning-trips">${monthTrips} viajes</div>
+                `;
+            }
+            
+            // Mostrar historial (últimos 10 viajes)
+            trips.sort((a, b) => b.completedAt.toDate() - a.completedAt.toDate());
+            trips.slice(0, 10).forEach((trip) => {
+                const driverEarning = (trip.totalFare * 0.95).toFixed(2);
+                const tripDate = trip.completedAt.toDate().toLocaleDateString('es-ES');
+                
+                historyHTML += `
+                    <div class="earning-item">
+                        <div class="earning-trip-info">
+                            <div class="trip-route-small">
+                                <span>📍 ${trip.origin}</span>
+                                <span class="arrow">→</span>
+                                <span>📍 ${trip.destination}</span>
+                            </div>
+                            <div class="trip-date">${tripDate}</div>
+                        </div>
+                        <div class="earning-amount-small">+RD$${driverEarning}</div>
+                    </div>
+                `;
+            });
+            
+            earningsHistory.innerHTML = historyHTML || '<p>No hay historial disponible</p>';
+        });
+        
+    } catch (error) {
+        console.error('Error loading earnings:', error);
+        document.getElementById('earningsHistory').innerHTML = '<p>Error cargando historial</p>';
     }
 }
 

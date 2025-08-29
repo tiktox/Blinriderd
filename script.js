@@ -987,6 +987,8 @@ function loadAvailableTrips() {
     }
 }
 
+
+
 // Formatear tiempo
 function formatTime(date) {
     const now = new Date();
@@ -1104,7 +1106,15 @@ function showDriverSection(section) {
     switch(section) {
         case 'trips':
             if (driverOnline) {
-                loadAvailableTrips();
+                driverContent.innerHTML = `
+                    <div id="availableTrips" class="trips-container">
+                        <h3>📍 Viajes Disponibles</h3>
+                        <div class="trips-list" id="tripsList">
+                            <p>Buscando viajes cercanos...</p>
+                        </div>
+                    </div>
+                `;
+                setTimeout(() => loadAvailableTrips(), 100);
             } else {
                 driverContent.innerHTML = `
                     <div class="no-trips">

@@ -337,6 +337,14 @@ let directionsService = null;
 let directionsRenderer = null;
 let autocompleteDestination = null;
 
+// Variables para tracking en tiempo real
+let trackingMap = null;
+let driverMarker = null;
+let userMarker = null;
+let trackingDirectionsRenderer = null;
+let locationWatcher = null;
+let currentTripId = null;
+
 // Configuración de tarifas
 const FARE_CONFIG = {
     pricePerKm: 30.00,
@@ -677,6 +685,17 @@ function showTripAccepted(trip) {
                 <p><strong>Conductor:</strong> ${trip.driverName}</p>
                 <p>El conductor se dirige hacia ti</p>
             </div>
+            
+            <div class="map-section">
+                <button class="show-map-btn" onclick="showTrackingMap('${trip.tripId || 'current'}', 'user')">
+                    🗺️ Ver ubicación del conductor
+                </button>
+                <div id="userTrackingMapContainer" class="tracking-map-container" style="display: none;">
+                    <div id="userTrackingMap" class="tracking-map"></div>
+                    <button class="hide-map-btn" onclick="hideUserTrackingMap()">Ocultar Mapa</button>
+                </div>
+            </div>
+            
             <div class="trip-status">
                 <div class="status-step completed">
                     <span class="step-icon">✓</span>
@@ -1111,6 +1130,16 @@ function showActiveTrip(tripId, tripData) {
                 <div class="navigation-info">
                     <p>📍 <strong>Dirección:</strong> ${tripData.origin}</p>
                     <p>⏱️ <strong>Distancia estimada:</strong> ${tripData.distance} km</p>
+                </div>
+            </div>
+            
+            <div class="map-section">
+                <button class="show-map-btn" onclick="showTrackingMap('${tripId}', 'driver')">
+                    🗺️ Ver Mapa en Tiempo Real
+                </button>
+                <div id="trackingMapContainer" class="tracking-map-container" style="display: none;">
+                    <div id="trackingMap" class="tracking-map"></div>
+                    <button class="hide-map-btn" onclick="hideTrackingMap()">Ocultar Mapa</button>
                 </div>
             </div>
             
@@ -1637,6 +1666,268 @@ async function loadDriverEarnings() {
         console.error('Error loading earnings:', error);
         document.getElementById('earningsHistory').innerHTML = '<p>Error cargando historial</p>';
     }
+}
+
+// Mostrar mapa de tracking en tiempo real
+function showTrackingMap(tripId, userType) {
+    currentTripId = tripId;
+    
+    const container = userType === 'driver' ? 
+        document.getElementById('trackingMapContainer') : 
+        document.getElementById('userTrackingMapContainer');
+    
+    const mapElement = userType === 'driver' ? 
+        document.getElementById('trackingMap') : 
+        document.getElementById('userTrackingMap');
+    
+    container.style.display = 'block';
+    
+    // Inicializar mapa
+    setTimeout(() => {
+        initTrackingMap(mapElement, tripId, userType);
+    }, 100);
+}
+
+// Ocultar mapa de tracking
+function hideTrackingMap() {
+    document.getElementById('trackingMapContainer').style.display = 'none';
+    stopLocationTracking();
+}
+
+function hideUserTrackingMap() {
+    document.getElementById('userTrackingMapContainer').style.display = 'none';
+    stopLocationTracking();
+}
+
+// Inicializar mapa de tracking
+function initTrackingMap(mapElement, tripId, userType) {
+    const defaultLocation = { lat: 18.4861, lng: -69.9312 };
+    
+    trackingMap = new google.maps.Map(mapElement, {
+        zoom: 15,
+        center: defaultLocation,
+        styles: [
+            { elementType: 'geometry', stylers: [{ color: '#1A1A1A' }] },
+            { elementType: 'labels.text.fill', stylers: [{ color: '#EAEAEA' }] },
+            { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2E2E2E' }] },
+            { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#3B82F6' }] }
+        ]
+    });
+    
+    trackingDirectionsRenderer = new google.maps.DirectionsRenderer({
+        polylineOptions: { strokeColor: '#22C55E', strokeWeight: 4 }
+    });
+    trackingDirectionsRenderer.setMap(trackingMap);
+    
+    // Obtener datos del viaje
+    getTripData(tripId).then(tripData => {
+        if (tripData) {
+            setupTrackingMarkers(tripData, userType);
+            if (userType === 'driver') {
+                startDriverLocationTracking(tripId, tripData);
+            } else {
+                startUserLocationTracking(tripId, tripData);
+            }
+        }
+    });
+}
+
+// Obtener datos del viaje
+async function getTripData(tripId) {
+    try {
+        const tripDoc = await window.getDoc(window.doc(window.db, 'trips', tripId));
+        return tripDoc.exists() ? tripDoc.data() : null;
+    } catch (error) {
+        console.error('Error getting trip data:', error);
+        return null;
+    }
+}
+
+// Configurar marcadores de tracking
+function setupTrackingMarkers(tripData, userType) {
+    // Marcador del punto de recogida (usuario)
+    const pickupLocation = geocodeAddress(tripData.origin);
+    pickupLocation.then(coords => {
+        if (coords) {
+            userMarker = new google.maps.Marker({
+                position: coords,
+                map: trackingMap,
+                title: 'Punto de recogida',
+                icon: {
+                    path: google.maps.SymbolPath.CIRCLE,
+                    scale: 10,
+                    fillColor: '#3B82F6',
+                    fillOpacity: 1,
+                    strokeColor: '#FFFFFF',
+                    strokeWeight: 2
+                }
+            });
+            
+            // Centrar mapa en el punto de recogida
+            trackingMap.setCenter(coords);
+        }
+    });
+}
+
+// Geocodificar dirección
+async function geocodeAddress(address) {
+    return new Promise((resolve) => {
+        const geocoder = new google.maps.Geocoder();
+        geocoder.geocode({ address: address }, (results, status) => {
+            if (status === 'OK' && results[0]) {
+                resolve(results[0].geometry.location.toJSON());
+            } else {
+                resolve(null);
+            }
+        });
+    });
+}
+
+// Iniciar tracking de ubicación del conductor
+function startDriverLocationTracking(tripId, tripData) {
+    if (navigator.geolocation) {
+        locationWatcher = navigator.geolocation.watchPosition(
+            (position) => {
+                const driverLocation = {
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude
+                };
+                
+                updateDriverLocation(tripId, driverLocation);
+                updateDriverMarker(driverLocation);
+                calculateRouteToPickup(driverLocation, tripData.origin);
+            },
+            (error) => {
+                console.error('Error getting location:', error);
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 30000
+            }
+        );
+    }
+}
+
+// Iniciar tracking para el usuario (escuchar ubicación del conductor)
+function startUserLocationTracking(tripId, tripData) {
+    const tripRef = window.doc(window.db, 'trips', tripId);
+    
+    window.onSnapshot(tripRef, (doc) => {
+        if (doc.exists()) {
+            const data = doc.data();
+            if (data.driverLocation) {
+                updateDriverMarker(data.driverLocation);
+                calculateRouteToPickup(data.driverLocation, tripData.origin);
+            }
+        }
+    });
+}
+
+// Actualizar ubicación del conductor en Firebase
+async function updateDriverLocation(tripId, location) {
+    try {
+        await window.updateDoc(window.doc(window.db, 'trips', tripId), {
+            driverLocation: location,
+            lastLocationUpdate: new Date()
+        });
+    } catch (error) {
+        console.error('Error updating driver location:', error);
+    }
+}
+
+// Actualizar marcador del conductor
+function updateDriverMarker(location) {
+    if (driverMarker) {
+        driverMarker.setPosition(location);
+    } else {
+        driverMarker = new google.maps.Marker({
+            position: location,
+            map: trackingMap,
+            title: 'Conductor',
+            icon: {
+                path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z',
+                fillColor: '#22C55E',
+                fillOpacity: 1,
+                strokeColor: '#FFFFFF',
+                strokeWeight: 2,
+                scale: 1.5,
+                anchor: new google.maps.Point(12, 24)
+            }
+        });
+    }
+    
+    // Centrar mapa en el conductor
+    trackingMap.panTo(location);
+}
+
+// Calcular ruta al punto de recogida
+function calculateRouteToPickup(driverLocation, pickupAddress) {
+    const directionsService = new google.maps.DirectionsService();
+    
+    geocodeAddress(pickupAddress).then(pickupCoords => {
+        if (pickupCoords) {
+            directionsService.route({
+                origin: driverLocation,
+                destination: pickupCoords,
+                travelMode: google.maps.TravelMode.DRIVING
+            }, (response, status) => {
+                if (status === 'OK') {
+                    trackingDirectionsRenderer.setDirections(response);
+                    
+                    // Mostrar tiempo estimado
+                    const duration = response.routes[0].legs[0].duration.text;
+                    updateETA(duration);
+                }
+            });
+        }
+    });
+}
+
+// Actualizar tiempo estimado de llegada
+function updateETA(duration) {
+    const etaElement = document.querySelector('.eta-info');
+    if (!etaElement) {
+        const tripInfo = document.querySelector('.trip-info-card') || document.querySelector('.driver-info');
+        if (tripInfo) {
+            const etaDiv = document.createElement('div');
+            etaDiv.className = 'eta-info';
+            etaDiv.innerHTML = `
+                <div class="eta-container">
+                    <span class="eta-icon">⏱️</span>
+                    <span class="eta-text">Tiempo estimado: <strong>${duration}</strong></span>
+                </div>
+            `;
+            tripInfo.appendChild(etaDiv);
+        }
+    } else {
+        etaElement.querySelector('.eta-text').innerHTML = `Tiempo estimado: <strong>${duration}</strong>`;
+    }
+}
+
+// Detener tracking de ubicación
+function stopLocationTracking() {
+    if (locationWatcher) {
+        navigator.geolocation.clearWatch(locationWatcher);
+        locationWatcher = null;
+    }
+    
+    if (driverMarker) {
+        driverMarker.setMap(null);
+        driverMarker = null;
+    }
+    
+    if (userMarker) {
+        userMarker.setMap(null);
+        userMarker = null;
+    }
+    
+    if (trackingDirectionsRenderer) {
+        trackingDirectionsRenderer.setMap(null);
+    }
+    
+    trackingMap = null;
+    currentTripId = null;
 }
 
 // Iniciar sesión con Firebase

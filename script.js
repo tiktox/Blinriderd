@@ -1,3 +1,40 @@
+// Firebase initialization will be handled by HTML script tags
+// This ensures compatibility across different environments
+
+// Check Firebase connection
+function checkFirebaseConnection() {
+    if (window.auth && window.db && window.collection && window.query && window.where && window.onSnapshot) {
+        console.log('Firebase initialized successfully');
+        return true;
+    } else {
+        console.error('Firebase not properly initialized. Make sure Firebase scripts are loaded.');
+        console.log('Available Firebase functions:', {
+            auth: !!window.auth,
+            db: !!window.db,
+            collection: !!window.collection,
+            query: !!window.query,
+            where: !!window.where,
+            onSnapshot: !!window.onSnapshot
+        });
+        return false;
+    }
+}
+
+// Initialize Firebase when DOM is ready
+function initializeFirebaseApp() {
+    // This function should be called after Firebase scripts are loaded
+    // The actual initialization will be done in the HTML file
+    console.log('Checking Firebase initialization...');
+    
+    if (typeof firebase !== 'undefined') {
+        console.log('Firebase SDK loaded successfully');
+        return true;
+    } else {
+        console.error('Firebase SDK not loaded. Make sure to include Firebase scripts in your HTML.');
+        return false;
+    }
+}
+
 // Crear partículas de fondo
 function createParticles() {
     const particlesContainer = document.getElementById('particles');
@@ -553,10 +590,19 @@ function confirmRide() {
 async function saveTrip(tripData, origin, destination) {
     try {
         const user = window.auth.currentUser;
-        if (!user) return;
+        if (!user) {
+            console.error('No authenticated user');
+            showAlert('Error: Usuario no autenticado', 'error');
+            return;
+        }
+        
+        if (!checkFirebaseConnection()) {
+            showAlert('Error: Firebase no disponible', 'error');
+            return;
+        }
         
         const tripId = Date.now().toString();
-        await window.setDoc(window.doc(window.db, 'trips', tripId), {
+        const tripDoc = {
             userId: user.uid,
             userName: user.displayName || 'Usuario',
             userPhone: user.phoneNumber || '',
@@ -570,7 +616,11 @@ async function saveTrip(tripData, origin, destination) {
             status: 'searching', // searching -> accepted -> in_progress -> completed
             createdAt: new Date(),
             timestamp: Date.now()
-        });
+        };
+        
+        console.log('Saving trip with data:', tripDoc);
+        
+        await window.setDoc(window.doc(window.db, 'trips', tripId), tripDoc);
         
         console.log('Viaje guardado con ID:', tripId);
         console.log('Enviando a conductores conectados...');
@@ -580,7 +630,7 @@ async function saveTrip(tripData, origin, destination) {
         
     } catch (error) {
         console.error('Error saving trip:', error);
-        showAlert('Error al enviar el viaje', 'error');
+        showAlert('Error al enviar el viaje: ' + error.message, 'error');
     }
 }
 
@@ -797,6 +847,11 @@ function showDriverApp(user) {
 // Alternar estado del conductor
 let driverOnline = false;
 function toggleDriverStatus() {
+    if (!checkFirebaseConnection()) {
+        showAlert('Error: Firebase no disponible', 'error');
+        return;
+    }
+    
     driverOnline = !driverOnline;
     const statusElement = document.getElementById('driverStatus');
     const statusBtn = document.getElementById('statusBtn');
@@ -817,8 +872,17 @@ function toggleDriverStatus() {
             </div>
         `;
         
-        loadAvailableTrips();
+        // Esperar un poco para que el DOM se actualice
+        setTimeout(() => {
+            loadAvailableTrips();
+        }, 100);
     } else {
+        // Detener listener si está activo
+        if (tripsListener) {
+            tripsListener();
+            tripsListener = null;
+        }
+        
         statusElement.className = 'status-indicator offline';
         statusElement.querySelector('.status-text').textContent = 'Desconectado';
         statusBtn.textContent = 'Conectarse';
@@ -837,57 +901,90 @@ function toggleDriverStatus() {
 let tripsListener = null;
 function loadAvailableTrips() {
     const tripsList = document.getElementById('tripsList');
+    if (!tripsList) {
+        console.error('Element tripsList not found');
+        return;
+    }
+    
+    if (!checkFirebaseConnection()) {
+        tripsList.innerHTML = '<p>Error: Firebase no disponible</p>';
+        return;
+    }
+    
     tripsList.innerHTML = '<p>Buscando viajes cercanos...</p>';
     
-    // Consulta en tiempo real de viajes con estado "searching"
-    const tripsQuery = window.query(
-        window.collection(window.db, 'trips'),
-        window.where('status', '==', 'searching')
-    );
-    
-    // Escuchar cambios en tiempo real
-    tripsListener = window.onSnapshot(tripsQuery, (snapshot) => {
-        if (snapshot.empty) {
-            tripsList.innerHTML = '<p>No hay viajes disponibles</p>';
-            return;
-        }
+    try {
+        // Consulta en tiempo real de viajes con estado "searching"
+        const tripsRef = window.collection(window.db, 'trips');
+        const searchingTrips = window.query(tripsRef, window.where('status', '==', 'searching'));
         
-        let tripsHTML = '';
-        snapshot.forEach((doc) => {
-            const trip = doc.data();
-            const tripId = doc.id;
-            
-            // Calcular ganancias del conductor (95%)
-            const driverEarnings = (trip.totalFare * 0.95).toFixed(2);
-            
-            tripsHTML += `
-                <div class="trip-card" data-trip-id="${tripId}">
-                    <div class="trip-info">
-                        <div class="trip-route">
-                            <div class="route-point">📍 ${trip.origin}</div>
-                            <div class="route-arrow">→</div>
-                            <div class="route-point">📍 ${trip.destination}</div>
-                        </div>
-                        <div class="trip-details">
-                            <span class="distance">${trip.distance} km</span>
-                            <span class="fare">RD$${trip.totalFare.toFixed(2)}</span>
-                            <span class="earnings">Ganas: RD$${driverEarnings}</span>
-                        </div>
-                        <div class="trip-user">
-                            <span class="user-name">👤 ${trip.userName}</span>
-                            <span class="trip-time">${formatTime(trip.createdAt.toDate())}</span>
-                        </div>
-                    </div>
-                    <div class="trip-actions">
-                        <button class="accept-btn" onclick="acceptTrip('${tripId}')">Aceptar</button>
-                        <button class="decline-btn" onclick="declineTrip('${tripId}')">Rechazar</button>
-                    </div>
-                </div>
-            `;
-        });
+        console.log('Setting up trips listener...');
         
-        tripsList.innerHTML = tripsHTML;
-    });
+        // Escuchar cambios en tiempo real
+        tripsListener = window.onSnapshot(searchingTrips, 
+            (snapshot) => {
+                console.log(`Snapshot received: ${snapshot.size} trips`);
+                console.log('Snapshot empty:', snapshot.empty);
+                
+                if (snapshot.empty) {
+                    tripsList.innerHTML = '<p>No hay viajes disponibles</p>';
+                    return;
+                }
+                
+                let tripsHTML = '';
+                snapshot.forEach((doc) => {
+                    const trip = doc.data();
+                    const tripId = doc.id;
+                    
+                    console.log('Trip data:', tripId, trip);
+                    
+                    // Validar que el viaje tenga los campos necesarios
+                    if (!trip.origin || !trip.destination || !trip.totalFare) {
+                        console.warn('Trip missing required fields:', tripId, trip);
+                        return;
+                    }
+                    
+                    // Calcular ganancias del conductor (95%)
+                    const driverEarnings = (trip.totalFare * 0.95).toFixed(2);
+                    
+                    tripsHTML += `
+                        <div class="trip-card" data-trip-id="${tripId}">
+                            <div class="trip-info">
+                                <div class="trip-route">
+                                    <div class="route-point">📍 ${trip.origin}</div>
+                                    <div class="route-arrow">→</div>
+                                    <div class="route-point">📍 ${trip.destination}</div>
+                                </div>
+                                <div class="trip-details">
+                                    <span class="distance">${trip.distance || 'N/A'} km</span>
+                                    <span class="fare">RD$${trip.totalFare.toFixed(2)}</span>
+                                    <span class="earnings">Ganas: RD$${driverEarnings}</span>
+                                </div>
+                                <div class="trip-user">
+                                    <span class="user-name">👤 ${trip.userName || 'Usuario'}</span>
+                                    <span class="trip-time">${trip.createdAt ? formatTime(trip.createdAt.toDate()) : 'Ahora'}</span>
+                                </div>
+                            </div>
+                            <div class="trip-actions">
+                                <button class="accept-btn" onclick="acceptTrip('${tripId}')">Aceptar</button>
+                                <button class="decline-btn" onclick="declineTrip('${tripId}')">Rechazar</button>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                tripsList.innerHTML = tripsHTML;
+            },
+            (error) => {
+                console.error('Firestore listener error:', error);
+                tripsList.innerHTML = `<p>Error: ${error.message}</p>`;
+            }
+        );
+        
+    } catch (error) {
+        console.error('Setup error:', error);
+        tripsList.innerHTML = '<p>Error en configuración</p>';
+    }
 }
 
 // Formatear tiempo
@@ -1052,6 +1149,12 @@ function showDriverSection(section) {
 
 // Aplicar formato a números de teléfono
 document.addEventListener('DOMContentLoaded', function() {
+    // Esperar a que Firebase se inicialice
+    setTimeout(() => {
+        console.log('Checking Firebase initialization after DOM load...');
+        checkFirebaseConnection();
+    }, 1000);
+    
     document.getElementById('userPhone').addEventListener('input', function() {
         formatPhoneNumber(this);
     });

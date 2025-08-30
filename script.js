@@ -708,17 +708,24 @@ function showTripAccepted(trip) {
                         <div class="step-dot">✓</div>
                         <span>Viaje confirmado</span>
                     </div>
-                    <div class="timeline-step active">
+                    <div class="timeline-step active" id="drivingStep">
                         <div class="step-dot">🚗</div>
                         <span>Conductor en camino</span>
                     </div>
-                    <div class="timeline-step">
+                    <div class="timeline-step" id="arrivalStep">
                         <div class="step-dot">📍</div>
                         <span>Llegada</span>
                     </div>
                     <div class="timeline-step">
                         <div class="step-dot">🏁</div>
                         <span>Completado</span>
+                    </div>
+                </div>
+                
+                <div id="arrivalMessage" class="arrival-message" style="display: none;">
+                    <div class="message-content">
+                        <div class="message-icon">📍</div>
+                        <div class="message-text"></div>
                     </div>
                 </div>
                 
@@ -743,6 +750,9 @@ function showTripAccepted(trip) {
     setTimeout(() => {
         initLiveTrackingMap(trip.tripId || 'current', trip);
         startUserLocationTracking(trip.tripId || 'current');
+        
+        // Escuchar cambios en el estado del viaje para detectar llegada
+        listenForDriverArrival(trip.tripId || 'current');
     }, 100);
 }
 
@@ -766,6 +776,44 @@ function startUserLocationTracking(tripId) {
             { enableHighAccuracy: true, timeout: 5000, maximumAge: 10000 }
         );
     }
+}
+
+// Escuchar llegada del conductor
+function listenForDriverArrival(tripId) {
+    const tripRef = window.doc(window.db, 'trips', tripId);
+    
+    window.onSnapshot(tripRef, (doc) => {
+        if (doc.exists()) {
+            const tripData = doc.data();
+            
+            // Verificar si el conductor ha llegado
+            if (tripData.status === 'driver_arrived' && tripData.driverArrivedMessage) {
+                // Completar icono de llegada
+                const arrivalStep = document.getElementById('arrivalStep');
+                const drivingStep = document.getElementById('drivingStep');
+                
+                if (arrivalStep && drivingStep) {
+                    drivingStep.classList.remove('active');
+                    drivingStep.classList.add('completed');
+                    arrivalStep.classList.add('completed');
+                    arrivalStep.innerHTML = `
+                        <div class="step-dot completed">✓</div>
+                        <span>Llegada</span>
+                    `;
+                }
+                
+                // Mostrar mensaje de llegada
+                const arrivalMessage = document.getElementById('arrivalMessage');
+                if (arrivalMessage) {
+                    arrivalMessage.style.display = 'block';
+                    arrivalMessage.querySelector('.message-text').textContent = tripData.driverArrivedMessage;
+                }
+                
+                // Mostrar alerta
+                showAlert(tripData.driverArrivedMessage, 'success');
+            }
+        }
+    });
 }
 
 // Mostrar viaje completado
@@ -2288,12 +2336,17 @@ async function updateDriverMapLocation(tripId, location, tripData) {
 // Marcar llegada del conductor
 async function markDriverArrived(tripId) {
     try {
+        // Obtener datos del conductor
+        const currentUser = window.auth.currentUser;
+        const driverName = currentUser?.displayName || 'Conductor';
+        
         await window.updateDoc(window.doc(window.db, 'trips', tripId), {
             status: 'driver_arrived',
-            arrivedAt: new Date()
+            arrivedAt: new Date(),
+            driverArrivedMessage: `El conductor ${driverName} está en el punto de encuentro. Asegúrate de que sea él antes de que el viaje inicie.`
         });
         
-        // Actualizar UI
+        // Actualizar UI del conductor
         document.getElementById('arrivedBtn').style.display = 'none';
         document.getElementById('startTripBtn').style.display = 'block';
         
@@ -2303,6 +2356,10 @@ async function markDriverArrived(tripId) {
         currentStep.classList.remove('active');
         currentStep.classList.add('completed');
         arrivedStep.classList.add('active');
+        arrivedStep.innerHTML = `
+            <div class="step-dot completed">✓</div>
+            <span>Llegada</span>
+        `;
         
         showAlert('✅ Llegada confirmada. Cliente notificado.', 'success');
         

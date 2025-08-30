@@ -347,6 +347,8 @@ let currentTripId = null;
 let currentUserType = 'user';
 let liveTrackingMap = null;
 let liveDirectionsRenderer = null;
+let driverLiveMap = null;
+let driverDirectionsRenderer = null;
 
 // Configuración de tarifas
 const FARE_CONFIG = {
@@ -1092,93 +1094,92 @@ async function acceptTrip(tripId) {
 function showActiveTrip(tripId, tripData) {
     const driverContent = document.getElementById('driverContent');
     
-    // Crear URL de Google Maps para navegación
-    const origin = encodeURIComponent('Mi ubicación');
-    const destination = encodeURIComponent(tripData.origin);
-    const mapsUrl = `https://www.google.com/maps/dir/${origin}/${destination}`;
-    
     driverContent.innerHTML = `
-        <div class="active-trip">
-            <h3>🎯 Viaje en Progreso</h3>
+        <div class="driver-trip-container">
+            <div id="driverLiveMap" class="driver-live-map"></div>
             
-            <div class="trip-info-card">
-                <div class="client-info">
-                    <h4>👤 Cliente: ${tripData.userName}</h4>
-                    <p>📞 ${tripData.userPhone || 'Teléfono no disponible'}</p>
-                </div>
-                
-                <div class="trip-route-info">
-                    <div class="route-step">
-                        <span class="route-icon">📍</span>
-                        <div class="route-details">
-                            <strong>Recoger en:</strong>
-                            <p>${tripData.origin}</p>
-                        </div>
+            <div class="driver-trip-card">
+                <div class="client-header">
+                    <div class="client-avatar">
+                        <span class="client-initial">${tripData.userName.charAt(0)}</span>
                     </div>
-                    <div class="route-arrow">↓</div>
-                    <div class="route-step">
-                        <span class="route-icon">🏁</span>
-                        <div class="route-details">
-                            <strong>Destino:</strong>
-                            <p>${tripData.destination}</p>
-                        </div>
+                    <div class="client-info">
+                        <h3>${tripData.userName}</h3>
+                        <p class="client-phone">📞 ${tripData.userPhone || 'No disponible'}</p>
+                    </div>
+                    <div class="trip-earnings">
+                        <div class="earnings-amount">RD$${(tripData.totalFare * 0.95).toFixed(2)}</div>
+                        <div class="earnings-label">Ganarás</div>
                     </div>
                 </div>
                 
-                <div class="trip-earnings">
-                    <span class="earnings-label">Ganarás:</span>
-                    <span class="earnings-amount">RD$${(tripData.totalFare * 0.95).toFixed(2)}</span>
+                <div class="route-info">
+                    <div class="route-item pickup">
+                        <div class="route-icon">📍</div>
+                        <div class="route-text">
+                            <span class="route-label">Recoger en:</span>
+                            <span class="route-address">${tripData.origin}</span>
+                        </div>
+                    </div>
+                    <div class="route-item destination">
+                        <div class="route-icon">🏁</div>
+                        <div class="route-text">
+                            <span class="route-label">Destino:</span>
+                            <span class="route-address">${tripData.destination}</span>
+                        </div>
+                    </div>
                 </div>
-            </div>
-            
-            <div class="trip-status">
-                <div class="status-step active">
-                    <span class="step-icon">✓</span>
-                    <span>Viaje aceptado</span>
+                
+                <div class="driver-progress">
+                    <div class="progress-step completed">
+                        <div class="step-dot">✓</div>
+                        <span>Aceptado</span>
+                    </div>
+                    <div class="progress-step active" id="currentStep">
+                        <div class="step-dot">🚗</div>
+                        <span>En camino</span>
+                    </div>
+                    <div class="progress-step" id="arrivedStep">
+                        <div class="step-dot">📍</div>
+                        <span>Llegada</span>
+                    </div>
+                    <div class="progress-step" id="completedStep">
+                        <div class="step-dot">🏁</div>
+                        <span>Completado</span>
+                    </div>
                 </div>
-                <div class="status-step current">
-                    <span class="step-icon">🚗</span>
-                    <span>Dirigiendote al cliente</span>
+                
+                <div class="trip-eta">
+                    <div class="eta-item">
+                        <span id="driverEtaDisplay">Calculando...</span>
+                    </div>
+                    <div class="eta-item">
+                        <span id="driverDistanceDisplay">${tripData.distance} km</span>
+                    </div>
                 </div>
-                <div class="status-step">
-                    <span class="step-icon">📍</span>
-                    <span>Viaje completado</span>
-                </div>
-            </div>
-            
-            <div class="navigation-section">
-                <h4>🧭 Navegación</h4>
-                <div class="navigation-buttons">
-                    <a href="${mapsUrl}" target="_blank" class="navigate-btn">
-                        🗺️ Abrir en Google Maps
-                    </a>
-                    <button class="waze-btn" onclick="openInWaze('${tripData.origin}')">
-                        🚗 Abrir en Waze
+                
+                <div class="driver-actions">
+                    <button class="action-btn primary" id="arrivedBtn" onclick="markDriverArrived('${tripId}')">
+                        ✅ He llegado
+                    </button>
+                    <button class="action-btn secondary" id="startTripBtn" onclick="startTrip('${tripId}')" style="display: none;">
+                        🚀 Iniciar viaje
+                    </button>
+                    <button class="action-btn success" id="completeTripBtn" onclick="completeTrip('${tripId}')" style="display: none;">
+                        🏁 Finalizar viaje
+                    </button>
+                    <button class="action-btn danger" onclick="cancelActiveTrip('${tripId}')">
+                        ❌ Cancelar
                     </button>
                 </div>
-                <div class="navigation-info">
-                    <p>📍 <strong>Dirección:</strong> ${tripData.origin}</p>
-                    <p>⏱️ <strong>Distancia estimada:</strong> ${tripData.distance} km</p>
-                </div>
-            </div>
-            
-            <div class="map-section">
-                <button class="show-map-btn" onclick="showTrackingMap('${tripId}', 'driver')">
-                    🗺️ Ver Mapa en Tiempo Real
-                </button>
-                <div id="trackingMapContainer" class="tracking-map-container" style="display: none;">
-                    <div id="trackingMap" class="tracking-map"></div>
-                    <button class="hide-map-btn" onclick="hideTrackingMap()">Ocultar Mapa</button>
-                </div>
-            </div>
-            
-            <div class="trip-actions">
-                <button class="arrived-btn" onclick="markArrived('${tripId}')">He llegado al punto de recogida</button>
-                <button class="complete-btn" onclick="completeTrip('${tripId}')">Completar Viaje</button>
-                <button class="cancel-trip-btn" onclick="cancelActiveTrip('${tripId}')">Cancelar Viaje</button>
             </div>
         </div>
     `;
+    
+    // Inicializar mapa del conductor
+    setTimeout(() => {
+        initDriverLiveMap(tripId, tripData);
+    }, 100);
 }
 
 // Abrir en Waze
@@ -2075,6 +2076,202 @@ async function geocodeAddress(address) {
             }
         });
     });
+}
+
+// Inicializar mapa del conductor
+function initDriverLiveMap(tripId, tripData) {
+    const mapContainer = document.getElementById('driverLiveMap');
+    if (!mapContainer || !window.google) return;
+    
+    driverLiveMap = new google.maps.Map(mapContainer, {
+        zoom: 15,
+        center: { lat: 18.4861, lng: -69.9312 },
+        mapTypeId: 'roadmap'
+    });
+    
+    driverDirectionsRenderer = new google.maps.DirectionsRenderer({
+        suppressMarkers: true,
+        polylineOptions: { strokeColor: '#22C55E', strokeWeight: 4 }
+    });
+    driverDirectionsRenderer.setMap(driverLiveMap);
+    
+    // Configurar marcadores
+    setupDriverTracking(tripId, tripData);
+}
+
+// Configurar tracking del conductor
+function setupDriverTracking(tripId, tripData) {
+    currentUserType = 'driver';
+    
+    // Marcador del punto de recogida
+    geocodeAddress(tripData.origin).then(pickupCoords => {
+        if (pickupCoords) {
+            new google.maps.Marker({
+                position: pickupCoords,
+                map: driverLiveMap,
+                title: 'Cliente',
+                icon: {
+                    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
+                        '<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">' +
+                        '<circle cx="20" cy="20" r="18" fill="#FF5722" stroke="white" stroke-width="3"/>' +
+                        '<text x="20" y="26" text-anchor="middle" fill="white" font-size="16">👤</text>' +
+                        '</svg>'
+                    ),
+                    scaledSize: new google.maps.Size(40, 40)
+                }
+            });
+            
+            // Centrar mapa en el cliente
+            driverLiveMap.setCenter(pickupCoords);
+        }
+    });
+    
+    // Marcador del destino
+    geocodeAddress(tripData.destination).then(destCoords => {
+        if (destCoords) {
+            new google.maps.Marker({
+                position: destCoords,
+                map: driverLiveMap,
+                title: 'Destino',
+                icon: {
+                    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
+                        '<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">' +
+                        '<circle cx="20" cy="20" r="18" fill="#4CAF50" stroke="white" stroke-width="3"/>' +
+                        '<text x="20" y="26" text-anchor="middle" fill="white" font-size="16">🏁</text>' +
+                        '</svg>'
+                    ),
+                    scaledSize: new google.maps.Size(40, 40)
+                }
+            });
+        }
+    });
+    
+    // Iniciar tracking de ubicación del conductor
+    startDriverLocationUpdates(tripId, tripData);
+}
+
+// Iniciar actualizaciones de ubicación del conductor
+function startDriverLocationUpdates(tripId, tripData) {
+    if (navigator.geolocation) {
+        locationWatcher = navigator.geolocation.watchPosition(
+            (position) => {
+                const location = {
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude
+                };
+                updateDriverMapLocation(tripId, location, tripData);
+            },
+            (error) => console.error('Error getting location:', error),
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+        );
+    }
+}
+
+// Actualizar ubicación del conductor en el mapa
+async function updateDriverMapLocation(tripId, location, tripData) {
+    try {
+        // Actualizar en Firebase
+        await window.updateDoc(window.doc(window.db, 'trips', tripId), {
+            driverLocation: location,
+            lastLocationUpdate: new Date()
+        });
+        
+        // Actualizar marcador del conductor
+        if (driverMarker) {
+            driverMarker.setPosition(location);
+        } else {
+            driverMarker = new google.maps.Marker({
+                position: location,
+                map: driverLiveMap,
+                title: 'Tu ubicación',
+                icon: {
+                    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
+                        '<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">' +
+                        '<circle cx="20" cy="20" r="18" fill="#2196F3" stroke="white" stroke-width="3"/>' +
+                        '<text x="20" y="26" text-anchor="middle" fill="white" font-size="16">🚗</text>' +
+                        '</svg>'
+                    ),
+                    scaledSize: new google.maps.Size(40, 40)
+                }
+            });
+        }
+        
+        // Calcular ruta al cliente
+        geocodeAddress(tripData.origin).then(pickupCoords => {
+            if (pickupCoords) {
+                const directionsService = new google.maps.DirectionsService();
+                directionsService.route({
+                    origin: location,
+                    destination: pickupCoords,
+                    travelMode: google.maps.TravelMode.DRIVING
+                }, (result, status) => {
+                    if (status === 'OK') {
+                        driverDirectionsRenderer.setDirections(result);
+                        const leg = result.routes[0].legs[0];
+                        document.getElementById('driverEtaDisplay').textContent = `⏱️ ${leg.duration.text}`;
+                        document.getElementById('driverDistanceDisplay').textContent = `📏 ${leg.distance.text}`;
+                    }
+                });
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error updating driver location:', error);
+    }
+}
+
+// Marcar llegada del conductor
+async function markDriverArrived(tripId) {
+    try {
+        await window.updateDoc(window.doc(window.db, 'trips', tripId), {
+            status: 'driver_arrived',
+            arrivedAt: new Date()
+        });
+        
+        // Actualizar UI
+        document.getElementById('arrivedBtn').style.display = 'none';
+        document.getElementById('startTripBtn').style.display = 'block';
+        
+        const currentStep = document.getElementById('currentStep');
+        const arrivedStep = document.getElementById('arrivedStep');
+        
+        currentStep.classList.remove('active');
+        currentStep.classList.add('completed');
+        arrivedStep.classList.add('active');
+        
+        showAlert('✅ Llegada confirmada. Cliente notificado.', 'success');
+        
+    } catch (error) {
+        console.error('Error marking arrival:', error);
+        showAlert('Error al confirmar llegada', 'error');
+    }
+}
+
+// Iniciar viaje
+async function startTrip(tripId) {
+    try {
+        await window.updateDoc(window.doc(window.db, 'trips', tripId), {
+            status: 'in_progress',
+            startedAt: new Date()
+        });
+        
+        // Actualizar UI
+        document.getElementById('startTripBtn').style.display = 'none';
+        document.getElementById('completeTripBtn').style.display = 'block';
+        
+        const arrivedStep = document.getElementById('arrivedStep');
+        const completedStep = document.getElementById('completedStep');
+        
+        arrivedStep.classList.remove('active');
+        arrivedStep.classList.add('completed');
+        completedStep.classList.add('active');
+        
+        showAlert('🚀 Viaje iniciado. Dirígete al destino.', 'success');
+        
+    } catch (error) {
+        console.error('Error starting trip:', error);
+        showAlert('Error al iniciar viaje', 'error');
+    }
 }
 
 // Detener tracking de ubicación

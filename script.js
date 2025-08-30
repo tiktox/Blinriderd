@@ -2196,24 +2196,31 @@ async function updateDriverMapLocation(tripId, location, tripData) {
             });
         }
         
-        // Calcular ruta al cliente
-        geocodeAddress(tripData.origin).then(pickupCoords => {
-            if (pickupCoords) {
-                const directionsService = new google.maps.DirectionsService();
-                directionsService.route({
-                    origin: location,
-                    destination: pickupCoords,
-                    travelMode: google.maps.TravelMode.DRIVING
-                }, (result, status) => {
-                    if (status === 'OK') {
-                        driverDirectionsRenderer.setDirections(result);
-                        const leg = result.routes[0].legs[0];
-                        document.getElementById('driverEtaDisplay').textContent = `⏱️ ${leg.duration.text}`;
-                        document.getElementById('driverDistanceDisplay').textContent = `📏 ${leg.distance.text}`;
-                    }
-                });
-            }
-        });
+        // Verificar estado del viaje para determinar destino
+        const tripDoc = await window.getDoc(window.doc(window.db, 'trips', tripId));
+        if (tripDoc.exists()) {
+            const currentTripData = tripDoc.data();
+            const destination = currentTripData.status === 'in_progress' ? tripData.destination : tripData.origin;
+            
+            // Calcular ruta según el estado del viaje
+            geocodeAddress(destination).then(destCoords => {
+                if (destCoords) {
+                    const directionsService = new google.maps.DirectionsService();
+                    directionsService.route({
+                        origin: location,
+                        destination: destCoords,
+                        travelMode: google.maps.TravelMode.DRIVING
+                    }, (result, status) => {
+                        if (status === 'OK') {
+                            driverDirectionsRenderer.setDirections(result);
+                            const leg = result.routes[0].legs[0];
+                            document.getElementById('driverEtaDisplay').textContent = `⏱️ ${leg.duration.text}`;
+                            document.getElementById('driverDistanceDisplay').textContent = `📏 ${leg.distance.text}`;
+                        }
+                    });
+                }
+            });
+        }
         
     } catch (error) {
         console.error('Error updating driver location:', error);
@@ -2250,6 +2257,12 @@ async function markDriverArrived(tripId) {
 // Iniciar viaje
 async function startTrip(tripId) {
     try {
+        // Obtener datos del viaje
+        const tripDoc = await window.getDoc(window.doc(window.db, 'trips', tripId));
+        if (!tripDoc.exists()) return;
+        
+        const tripData = tripDoc.data();
+        
         await window.updateDoc(window.doc(window.db, 'trips', tripId), {
             status: 'in_progress',
             startedAt: new Date()
@@ -2266,12 +2279,47 @@ async function startTrip(tripId) {
         arrivedStep.classList.add('completed');
         completedStep.classList.add('active');
         
+        // Cambiar ruta al destino final
+        changeRouteToDestination(tripData);
+        
         showAlert('🚀 Viaje iniciado. Dirígete al destino.', 'success');
         
     } catch (error) {
         console.error('Error starting trip:', error);
         showAlert('Error al iniciar viaje', 'error');
     }
+}
+
+// Cambiar ruta al destino final
+function changeRouteToDestination(tripData) {
+    if (!driverMarker || !driverLiveMap) return;
+    
+    const driverLocation = driverMarker.getPosition();
+    if (!driverLocation) return;
+    
+    geocodeAddress(tripData.destination).then(destCoords => {
+        if (destCoords) {
+            const directionsService = new google.maps.DirectionsService();
+            directionsService.route({
+                origin: driverLocation,
+                destination: destCoords,
+                travelMode: google.maps.TravelMode.DRIVING
+            }, (result, status) => {
+                if (status === 'OK') {
+                    driverDirectionsRenderer.setDirections(result);
+                    const leg = result.routes[0].legs[0];
+                    document.getElementById('driverEtaDisplay').textContent = `⏱️ ${leg.duration.text}`;
+                    document.getElementById('driverDistanceDisplay').textContent = `📏 ${leg.distance.text}`;
+                    
+                    // Ajustar vista del mapa para mostrar toda la ruta
+                    const bounds = new google.maps.LatLngBounds();
+                    bounds.extend(driverLocation);
+                    bounds.extend(destCoords);
+                    driverLiveMap.fitBounds(bounds);
+                }
+            });
+        }
+    });
 }
 
 // Detener tracking de ubicación

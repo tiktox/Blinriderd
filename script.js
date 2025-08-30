@@ -1962,23 +1962,26 @@ function initLiveTrackingMap(tripId, tripData) {
 
 // Configurar tracking en vivo
 function setupLiveTracking(tripId, tripData) {
-    // Marcador del punto de recogida
+    // Marcador del punto de recogida (usuario)
     geocodeAddress(tripData.origin).then(pickupCoords => {
         if (pickupCoords) {
-            new google.maps.Marker({
+            userMarker = new google.maps.Marker({
                 position: pickupCoords,
                 map: liveTrackingMap,
-                title: 'Punto de recogida',
+                title: 'Tu ubicación',
                 icon: {
                     url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
                         '<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">' +
-                        '<circle cx="20" cy="20" r="18" fill="#FF5722" stroke="white" stroke-width="3"/>' +
-                        '<text x="20" y="26" text-anchor="middle" fill="white" font-size="16">📍</text>' +
+                        '<circle cx="20" cy="20" r="18" fill="#3B82F6" stroke="white" stroke-width="3"/>' +
+                        '<text x="20" y="26" text-anchor="middle" fill="white" font-size="16">👤</text>' +
                         '</svg>'
                     ),
                     scaledSize: new google.maps.Size(40, 40)
                 }
             });
+            
+            // Centrar mapa en el usuario inicialmente
+            liveTrackingMap.setCenter(pickupCoords);
         }
     });
     
@@ -2002,7 +2005,7 @@ function setupLiveTracking(tripId, tripData) {
         }
     });
     
-    // Escuchar ubicación del conductor
+    // Escuchar ubicación del conductor en tiempo real
     const tripRef = window.doc(window.db, 'trips', tripId);
     window.onSnapshot(tripRef, (doc) => {
         if (doc.exists()) {
@@ -2014,8 +2017,9 @@ function setupLiveTracking(tripId, tripData) {
     });
 }
 
-// Actualizar ubicación del conductor en tiempo real
+// Actualizar ubicación del conductor en tiempo real (vista del usuario)
 function updateLiveDriverLocation(driverLocation, tripData) {
+    // Actualizar o crear marcador del conductor
     if (driverMarker) {
         driverMarker.setPosition(driverLocation);
     } else {
@@ -2035,7 +2039,7 @@ function updateLiveDriverLocation(driverLocation, tripData) {
         });
     }
     
-    // Calcular ruta al punto de recogida
+    // Calcular y mostrar ruta del conductor al punto de recogida
     geocodeAddress(tripData.origin).then(pickupCoords => {
         if (pickupCoords) {
             const directionsService = new google.maps.DirectionsService();
@@ -2047,8 +2051,18 @@ function updateLiveDriverLocation(driverLocation, tripData) {
                 if (status === 'OK') {
                     liveDirectionsRenderer.setDirections(result);
                     const leg = result.routes[0].legs[0];
-                    document.getElementById('etaDisplay').textContent = `⏱️ ${leg.duration.text}`;
-                    document.getElementById('distanceDisplay').textContent = `📏 ${leg.distance.text}`;
+                    
+                    // Actualizar información de ETA
+                    const etaDisplay = document.getElementById('etaDisplay');
+                    const distanceDisplay = document.getElementById('distanceDisplay');
+                    if (etaDisplay) etaDisplay.textContent = `⏱️ ${leg.duration.text}`;
+                    if (distanceDisplay) distanceDisplay.textContent = `📏 ${leg.distance.text}`;
+                    
+                    // Ajustar vista para mostrar conductor y usuario
+                    const bounds = new google.maps.LatLngBounds();
+                    bounds.extend(driverLocation);
+                    bounds.extend(pickupCoords);
+                    liveTrackingMap.fitBounds(bounds);
                 }
             });
         }
@@ -2167,16 +2181,18 @@ function startDriverLocationUpdates(tripId, tripData) {
     }
 }
 
-// Actualizar ubicación del conductor en el mapa
+// Actualizar ubicación del conductor en el mapa (vista del conductor)
 async function updateDriverMapLocation(tripId, location, tripData) {
     try {
-        // Actualizar en Firebase
+        // Actualizar en Firebase para que el usuario pueda verlo
         await window.updateDoc(window.doc(window.db, 'trips', tripId), {
             driverLocation: location,
             lastLocationUpdate: new Date()
         });
         
-        // Actualizar marcador del conductor
+        console.log('Driver location updated:', location);
+        
+        // Actualizar marcador del conductor en su propio mapa
         if (driverMarker) {
             driverMarker.setPosition(location);
         } else {
@@ -2214,8 +2230,11 @@ async function updateDriverMapLocation(tripId, location, tripData) {
                         if (status === 'OK') {
                             driverDirectionsRenderer.setDirections(result);
                             const leg = result.routes[0].legs[0];
-                            document.getElementById('driverEtaDisplay').textContent = `⏱️ ${leg.duration.text}`;
-                            document.getElementById('driverDistanceDisplay').textContent = `📏 ${leg.distance.text}`;
+                            
+                            const etaElement = document.getElementById('driverEtaDisplay');
+                            const distanceElement = document.getElementById('driverDistanceDisplay');
+                            if (etaElement) etaElement.textContent = `⏱️ ${leg.duration.text}`;
+                            if (distanceElement) distanceElement.textContent = `📏 ${leg.distance.text}`;
                         }
                     });
                 }

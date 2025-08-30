@@ -344,6 +344,9 @@ let userMarker = null;
 let trackingDirectionsRenderer = null;
 let locationWatcher = null;
 let currentTripId = null;
+let currentUserType = 'user';
+let liveTrackingMap = null;
+let liveDirectionsRenderer = null;
 
 // Configuración de tarifas
 const FARE_CONFIG = {
@@ -679,39 +682,65 @@ function showTripAccepted(trip) {
     const appContent = mainApp.querySelector('.app-content');
     
     appContent.innerHTML = `
-        <div class="trip-accepted-section">
-            <div class="driver-info">
-                <h2>✅ Conductor asignado</h2>
-                <p><strong>Conductor:</strong> ${trip.driverName}</p>
-                <p>El conductor se dirige hacia ti</p>
-            </div>
+        <div class="trip-tracking-container">
+            <div id="liveTrackingMap" class="live-tracking-map"></div>
             
-            <div class="map-section">
-                <button class="show-map-btn" onclick="showTrackingMap('${trip.tripId || 'current'}', 'user')">
-                    🗺️ Ver ubicación del conductor
-                </button>
-                <div id="userTrackingMapContainer" class="tracking-map-container" style="display: none;">
-                    <div id="userTrackingMap" class="tracking-map"></div>
-                    <button class="hide-map-btn" onclick="hideUserTrackingMap()">Ocultar Mapa</button>
+            <div class="trip-details-card">
+                <div class="card-header">
+                    <div class="driver-avatar">
+                        <span class="avatar-text">${trip.driverName.charAt(0)}</span>
+                    </div>
+                    <div class="driver-info">
+                        <h3>${trip.driverName}</h3>
+                        <p class="vehicle-info">🚗 ${trip.vehicleInfo || 'Vehículo'}</p>
+                        <p class="plate-info">📋 ${trip.vehiclePlate || 'ABC-123'}</p>
+                    </div>
+                    <div class="trip-status-indicator">
+                        <div class="status-dot active"></div>
+                        <span class="status-text">En camino</span>
+                    </div>
                 </div>
-            </div>
-            
-            <div class="trip-status">
-                <div class="status-step completed">
-                    <span class="step-icon">✓</span>
-                    <span>Viaje confirmado</span>
+                
+                <div class="progress-timeline">
+                    <div class="timeline-step completed">
+                        <div class="step-dot">✓</div>
+                        <span>Viaje confirmado</span>
+                    </div>
+                    <div class="timeline-step active">
+                        <div class="step-dot">🚗</div>
+                        <span>Conductor en camino</span>
+                    </div>
+                    <div class="timeline-step">
+                        <div class="step-dot">📍</div>
+                        <span>Llegada</span>
+                    </div>
+                    <div class="timeline-step">
+                        <div class="step-dot">🏁</div>
+                        <span>Completado</span>
+                    </div>
                 </div>
-                <div class="status-step current">
-                    <span class="step-icon">🚗</span>
-                    <span>Conductor en camino</span>
+                
+                <div class="eta-info">
+                    <div class="eta-display" id="etaDisplay">Calculando tiempo...</div>
+                    <div class="distance-display" id="distanceDisplay"></div>
                 </div>
-                <div class="status-step">
-                    <span class="step-icon">📍</span>
-                    <span>Viaje completado</span>
+                
+                <div class="trip-actions">
+                    <button class="contact-btn" onclick="contactDriver('${trip.driverPhone || ''}')">
+                        📞 Contactar
+                    </button>
+                    <button class="cancel-btn" onclick="cancelTrip('${trip.tripId || 'current'}')">
+                        ❌ Cancelar
+                    </button>
                 </div>
             </div>
         </div>
     `;
+    
+    // Inicializar mapa automáticamente
+    setTimeout(() => {
+        initLiveTrackingMap(trip.tripId || 'current', trip);
+    }, 100);
 }
 
 // Mostrar viaje completado
@@ -1903,6 +1932,149 @@ function updateETA(duration) {
     } else {
         etaElement.querySelector('.eta-text').innerHTML = `Tiempo estimado: <strong>${duration}</strong>`;
     }
+}
+
+// Inicializar mapa de tracking en vivo
+function initLiveTrackingMap(tripId, tripData) {
+    const mapContainer = document.getElementById('liveTrackingMap');
+    if (!mapContainer || !window.google) return;
+    
+    liveTrackingMap = new google.maps.Map(mapContainer, {
+        zoom: 15,
+        center: { lat: 18.4861, lng: -69.9312 },
+        mapTypeId: 'roadmap',
+        styles: [
+            { elementType: 'geometry', stylers: [{ color: '#f5f5f5' }] },
+            { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#3B82F6' }] }
+        ]
+    });
+    
+    liveDirectionsRenderer = new google.maps.DirectionsRenderer({
+        suppressMarkers: true,
+        polylineOptions: { strokeColor: '#22C55E', strokeWeight: 4 }
+    });
+    liveDirectionsRenderer.setMap(liveTrackingMap);
+    
+    // Configurar marcadores y tracking
+    setupLiveTracking(tripId, tripData);
+}
+
+// Configurar tracking en vivo
+function setupLiveTracking(tripId, tripData) {
+    // Marcador del punto de recogida
+    geocodeAddress(tripData.origin).then(pickupCoords => {
+        if (pickupCoords) {
+            new google.maps.Marker({
+                position: pickupCoords,
+                map: liveTrackingMap,
+                title: 'Punto de recogida',
+                icon: {
+                    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
+                        '<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">' +
+                        '<circle cx="20" cy="20" r="18" fill="#FF5722" stroke="white" stroke-width="3"/>' +
+                        '<text x="20" y="26" text-anchor="middle" fill="white" font-size="16">📍</text>' +
+                        '</svg>'
+                    ),
+                    scaledSize: new google.maps.Size(40, 40)
+                }
+            });
+        }
+    });
+    
+    // Marcador del destino
+    geocodeAddress(tripData.destination).then(destCoords => {
+        if (destCoords) {
+            new google.maps.Marker({
+                position: destCoords,
+                map: liveTrackingMap,
+                title: 'Destino',
+                icon: {
+                    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
+                        '<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">' +
+                        '<circle cx="20" cy="20" r="18" fill="#4CAF50" stroke="white" stroke-width="3"/>' +
+                        '<text x="20" y="26" text-anchor="middle" fill="white" font-size="16">🏁</text>' +
+                        '</svg>'
+                    ),
+                    scaledSize: new google.maps.Size(40, 40)
+                }
+            });
+        }
+    });
+    
+    // Escuchar ubicación del conductor
+    const tripRef = window.doc(window.db, 'trips', tripId);
+    window.onSnapshot(tripRef, (doc) => {
+        if (doc.exists()) {
+            const data = doc.data();
+            if (data.driverLocation) {
+                updateLiveDriverLocation(data.driverLocation, tripData);
+            }
+        }
+    });
+}
+
+// Actualizar ubicación del conductor en tiempo real
+function updateLiveDriverLocation(driverLocation, tripData) {
+    if (driverMarker) {
+        driverMarker.setPosition(driverLocation);
+    } else {
+        driverMarker = new google.maps.Marker({
+            position: driverLocation,
+            map: liveTrackingMap,
+            title: 'Conductor',
+            icon: {
+                url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
+                    '<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">' +
+                    '<circle cx="20" cy="20" r="18" fill="#2196F3" stroke="white" stroke-width="3"/>' +
+                    '<text x="20" y="26" text-anchor="middle" fill="white" font-size="16">🚗</text>' +
+                    '</svg>'
+                ),
+                scaledSize: new google.maps.Size(40, 40)
+            }
+        });
+    }
+    
+    // Calcular ruta al punto de recogida
+    geocodeAddress(tripData.origin).then(pickupCoords => {
+        if (pickupCoords) {
+            const directionsService = new google.maps.DirectionsService();
+            directionsService.route({
+                origin: driverLocation,
+                destination: pickupCoords,
+                travelMode: google.maps.TravelMode.DRIVING
+            }, (result, status) => {
+                if (status === 'OK') {
+                    liveDirectionsRenderer.setDirections(result);
+                    const leg = result.routes[0].legs[0];
+                    document.getElementById('etaDisplay').textContent = `⏱️ ${leg.duration.text}`;
+                    document.getElementById('distanceDisplay').textContent = `📏 ${leg.distance.text}`;
+                }
+            });
+        }
+    });
+}
+
+// Contactar conductor
+function contactDriver(phone) {
+    if (phone) {
+        window.open(`tel:${phone}`);
+    } else {
+        showAlert('Número no disponible', 'warning');
+    }
+}
+
+// Geocodificar dirección
+async function geocodeAddress(address) {
+    return new Promise((resolve) => {
+        const geocoder = new google.maps.Geocoder();
+        geocoder.geocode({ address: address }, (results, status) => {
+            if (status === 'OK' && results[0]) {
+                resolve(results[0].geometry.location.toJSON());
+            } else {
+                resolve(null);
+            }
+        });
+    });
 }
 
 // Detener tracking de ubicación

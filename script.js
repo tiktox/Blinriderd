@@ -739,10 +739,33 @@ function showTripAccepted(trip) {
         </div>
     `;
     
-    // Inicializar mapa automáticamente
+    // Inicializar mapa y tracking del usuario
     setTimeout(() => {
         initLiveTrackingMap(trip.tripId || 'current', trip);
+        startUserLocationTracking(trip.tripId || 'current');
     }, 100);
+}
+
+// Iniciar tracking de ubicación del usuario
+function startUserLocationTracking(tripId) {
+    if (navigator.geolocation) {
+        navigator.geolocation.watchPosition(
+            (position) => {
+                const userLocation = {
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude
+                };
+                
+                // Actualizar ubicación del usuario en Firebase
+                window.updateDoc(window.doc(window.db, 'trips', tripId), {
+                    userLocation: userLocation,
+                    userLastUpdate: new Date()
+                }).catch(error => console.error('Error updating user location:', error));
+            },
+            (error) => console.error('Error getting user location:', error),
+            { enableHighAccuracy: true, timeout: 5000, maximumAge: 10000 }
+        );
+    }
 }
 
 // Mostrar viaje completado
@@ -1941,18 +1964,23 @@ function initLiveTrackingMap(tripId, tripData) {
     if (!mapContainer || !window.google) return;
     
     liveTrackingMap = new google.maps.Map(mapContainer, {
-        zoom: 15,
+        zoom: 14,
         center: { lat: 18.4861, lng: -69.9312 },
         mapTypeId: 'roadmap',
         styles: [
             { elementType: 'geometry', stylers: [{ color: '#f5f5f5' }] },
-            { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#3B82F6' }] }
+            { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#3B82F6' }] },
+            { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#ffffff' }] }
         ]
     });
     
     liveDirectionsRenderer = new google.maps.DirectionsRenderer({
         suppressMarkers: true,
-        polylineOptions: { strokeColor: '#22C55E', strokeWeight: 4 }
+        polylineOptions: { 
+            strokeColor: '#22C55E', 
+            strokeWeight: 5,
+            strokeOpacity: 0.8
+        }
     });
     liveDirectionsRenderer.setMap(liveTrackingMap);
     
@@ -1962,26 +1990,6 @@ function initLiveTrackingMap(tripId, tripData) {
 
 // Configurar tracking en vivo
 function setupLiveTracking(tripId, tripData) {
-    // Marcador del punto de recogida
-    geocodeAddress(tripData.origin).then(pickupCoords => {
-        if (pickupCoords) {
-            new google.maps.Marker({
-                position: pickupCoords,
-                map: liveTrackingMap,
-                title: 'Punto de recogida',
-                icon: {
-                    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
-                        '<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">' +
-                        '<circle cx="20" cy="20" r="18" fill="#FF5722" stroke="white" stroke-width="3"/>' +
-                        '<text x="20" y="26" text-anchor="middle" fill="white" font-size="16">📍</text>' +
-                        '</svg>'
-                    ),
-                    scaledSize: new google.maps.Size(40, 40)
-                }
-            });
-        }
-    });
-    
     // Marcador del destino
     geocodeAddress(tripData.destination).then(destCoords => {
         if (destCoords) {
@@ -2002,7 +2010,7 @@ function setupLiveTracking(tripId, tripData) {
         }
     });
     
-    // Escuchar ubicación del conductor
+    // Escuchar ubicación del conductor en tiempo real
     const tripRef = window.doc(window.db, 'trips', tripId);
     window.onSnapshot(tripRef, (doc) => {
         if (doc.exists()) {
@@ -2016,6 +2024,7 @@ function setupLiveTracking(tripId, tripData) {
 
 // Actualizar ubicación del conductor en tiempo real
 function updateLiveDriverLocation(driverLocation, tripData) {
+    // Actualizar marcador del conductor
     if (driverMarker) {
         driverMarker.setPosition(driverLocation);
     } else {
@@ -2035,13 +2044,39 @@ function updateLiveDriverLocation(driverLocation, tripData) {
         });
     }
     
-    // Calcular ruta al punto de recogida
-    geocodeAddress(tripData.origin).then(pickupCoords => {
-        if (pickupCoords) {
+    // Obtener ubicación actual del usuario
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition((position) => {
+            const userLocation = {
+                lat: position.coords.latitude,
+                lng: position.coords.longitude
+            };
+            
+            // Crear/actualizar marcador del usuario
+            if (userMarker) {
+                userMarker.setPosition(userLocation);
+            } else {
+                userMarker = new google.maps.Marker({
+                    position: userLocation,
+                    map: liveTrackingMap,
+                    title: 'Tu ubicación',
+                    icon: {
+                        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
+                            '<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">' +
+                            '<circle cx="20" cy="20" r="18" fill="#FF5722" stroke="white" stroke-width="3"/>' +
+                            '<text x="20" y="26" text-anchor="middle" fill="white" font-size="16">👤</text>' +
+                            '</svg>'
+                        ),
+                        scaledSize: new google.maps.Size(40, 40)
+                    }
+                });
+            }
+            
+            // Crear trayectoria entre conductor y usuario
             const directionsService = new google.maps.DirectionsService();
             directionsService.route({
                 origin: driverLocation,
-                destination: pickupCoords,
+                destination: userLocation,
                 travelMode: google.maps.TravelMode.DRIVING
             }, (result, status) => {
                 if (status === 'OK') {
@@ -2049,10 +2084,16 @@ function updateLiveDriverLocation(driverLocation, tripData) {
                     const leg = result.routes[0].legs[0];
                     document.getElementById('etaDisplay').textContent = `⏱️ ${leg.duration.text}`;
                     document.getElementById('distanceDisplay').textContent = `📏 ${leg.distance.text}`;
+                    
+                    // Ajustar vista para mostrar ambos puntos
+                    const bounds = new google.maps.LatLngBounds();
+                    bounds.extend(driverLocation);
+                    bounds.extend(userLocation);
+                    liveTrackingMap.fitBounds(bounds);
                 }
             });
-        }
-    });
+        });
+    }
 }
 
 // Contactar conductor
@@ -2162,7 +2203,7 @@ function startDriverLocationUpdates(tripId, tripData) {
                 updateDriverMapLocation(tripId, location, tripData);
             },
             (error) => console.error('Error getting location:', error),
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+            { enableHighAccuracy: true, timeout: 5000, maximumAge: 10000 }
         );
     }
 }
@@ -2170,15 +2211,28 @@ function startDriverLocationUpdates(tripId, tripData) {
 // Actualizar ubicación del conductor en el mapa
 async function updateDriverMapLocation(tripId, location, tripData) {
     try {
-        // Actualizar en Firebase
+        // Actualizar en Firebase con timestamp
         await window.updateDoc(window.doc(window.db, 'trips', tripId), {
             driverLocation: location,
-            lastLocationUpdate: new Date()
+            lastLocationUpdate: new Date(),
+            timestamp: Date.now()
         });
         
-        // Actualizar marcador del conductor
+        // Actualizar marcador del conductor con animación suave
         if (driverMarker) {
-            driverMarker.setPosition(location);
+            // Animación suave del marcador
+            const currentPos = driverMarker.getPosition();
+            if (currentPos) {
+                const distance = google.maps.geometry.spherical.computeDistanceBetween(
+                    currentPos, new google.maps.LatLng(location.lat, location.lng)
+                );
+                // Solo actualizar si hay movimiento significativo (más de 5 metros)
+                if (distance > 5) {
+                    driverMarker.setPosition(location);
+                }
+            } else {
+                driverMarker.setPosition(location);
+            }
         } else {
             driverMarker = new google.maps.Marker({
                 position: location,
@@ -2209,13 +2263,17 @@ async function updateDriverMapLocation(tripId, location, tripData) {
                     directionsService.route({
                         origin: location,
                         destination: destCoords,
-                        travelMode: google.maps.TravelMode.DRIVING
+                        travelMode: google.maps.TravelMode.DRIVING,
+                        avoidHighways: false,
+                        avoidTolls: false
                     }, (result, status) => {
                         if (status === 'OK') {
                             driverDirectionsRenderer.setDirections(result);
                             const leg = result.routes[0].legs[0];
-                            document.getElementById('driverEtaDisplay').textContent = `⏱️ ${leg.duration.text}`;
-                            document.getElementById('driverDistanceDisplay').textContent = `📏 ${leg.distance.text}`;
+                            const etaElement = document.getElementById('driverEtaDisplay');
+                            const distanceElement = document.getElementById('driverDistanceDisplay');
+                            if (etaElement) etaElement.textContent = `⏱️ ${leg.duration.text}`;
+                            if (distanceElement) distanceElement.textContent = `📏 ${leg.distance.text}`;
                         }
                     });
                 }

@@ -73,6 +73,138 @@ function switchTab(tab, event) {
     }
 }
 
+// Función para validar que la ubicación sea real
+function validateRealLocation(position) {
+    if (!position || !position.coords) {
+        console.log('❌ No hay coordenadas en la posición');
+        return false;
+    }
+    
+    const { latitude, longitude, accuracy, timestamp } = position.coords;
+    
+    // Validar coordenadas válidas
+    if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+        console.log('❌ Coordenadas no son números válidos');
+        return false;
+    }
+    
+    // Validar rango de coordenadas (República Dominicana aproximadamente)
+    if (latitude < 17.0 || latitude > 20.0 || longitude < -72.0 || longitude > -68.0) {
+        console.log('❌ Ubicación fuera de República Dominicana');
+        return false;
+    }
+    
+    // Validar precisión (debe ser menor a 100 metros)
+    if (accuracy > 100) {
+        console.log('❌ Precisión muy baja:', accuracy, 'metros');
+        return false;
+    }
+    
+    // Validar timestamp (debe ser reciente, no más de 30 segundos)
+    const now = Date.now();
+    const positionTime = timestamp || now;
+    const timeDiff = Math.abs(now - positionTime);
+    
+    if (timeDiff > 30000) { // 30 segundos
+        console.log('❌ Ubicación muy antigua:', timeDiff, 'ms');
+        return false;
+    }
+    
+    // Validar que no sea una ubicación simulada (coordenadas exactas)
+    if (latitude === Math.floor(latitude) && longitude === Math.floor(longitude)) {
+        console.log('❌ Coordenadas parecen simuladas (números enteros)');
+        return false;
+    }
+    
+    // Validar que no sea una ubicación de prueba común
+    const commonTestLocations = [
+        { lat: 18.4861, lng: -69.9312 }, // Santo Domingo
+        { lat: 0, lng: 0 }, // Coordenadas 0,0
+        { lat: 37.7749, lng: -122.4194 }, // San Francisco (común en pruebas)
+        { lat: 40.7128, lng: -74.0060 } // Nueva York (común en pruebas)
+    ];
+    
+    for (const testLoc of commonTestLocations) {
+        const distance = calculateDistance(latitude, longitude, testLoc.lat, testLoc.lng);
+        if (distance < 10) { // Menos de 10 metros de distancia
+            console.log('❌ Ubicación coincide con ubicación de prueba común');
+            return false;
+        }
+    }
+    
+    console.log('✅ Ubicación validada como real');
+    return true;
+}
+
+// Función para calcular distancia entre dos puntos
+function calculateDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371e3; // Radio de la Tierra en metros
+    const φ1 = lat1 * Math.PI/180;
+    const φ2 = lat2 * Math.PI/180;
+    const Δφ = (lat2-lat1) * Math.PI/180;
+    const Δλ = (lon2-lon1) * Math.PI/180;
+
+    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+              Math.cos(φ1) * Math.cos(φ2) *
+              Math.sin(Δλ/2) * Math.sin(Δλ/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+    return R * c; // Distancia en metros
+}
+
+// Función para detectar movimiento real del conductor
+function detectRealMovement(currentLocation, lastLocation, timeDiff) {
+    if (!lastLocation) return true; // Primera ubicación
+    
+    const distance = calculateDistance(
+        currentLocation.lat, currentLocation.lng,
+        lastLocation.lat, lastLocation.lng
+    );
+    
+    // Calcular velocidad en km/h
+    const speed = (distance / 1000) / (timeDiff / 3600000);
+    
+    // Validar que la velocidad sea realista para un vehículo
+    if (speed > 120) { // Más de 120 km/h es sospechoso
+        console.log('⚠️ Velocidad sospechosa:', speed, 'km/h');
+        return false;
+    }
+    
+    // Validar que haya movimiento mínimo (al menos 5 metros en 30 segundos)
+    if (distance < 5 && timeDiff > 30000) {
+        console.log('⚠️ Conductor no se está moviendo');
+        return false;
+    }
+    
+    return true;
+}
+
+// Función para validar ubicación del usuario también
+function validateUserLocation(position) {
+    if (!position || !position.coords) {
+        return false;
+    }
+    
+    const { latitude, longitude, accuracy } = position.coords;
+    
+    // Validar coordenadas válidas
+    if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+        return false;
+    }
+    
+    // Validar rango de coordenadas (República Dominicana)
+    if (latitude < 17.0 || latitude > 20.0 || longitude < -72.0 || longitude > -68.0) {
+        return false;
+    }
+    
+    // Validar precisión (debe ser menor a 200 metros para usuario)
+    if (accuracy > 200) {
+        return false;
+    }
+    
+    return true;
+}
+
 // Función para sanitizar texto y prevenir XSS
 function sanitizeText(text) {
     if (typeof text !== 'string') return '';
@@ -1386,25 +1518,41 @@ async function acceptTrip(tripId) {
         
         const tripData = tripDoc.data();
         
-        // Obtener ubicación actual del conductor
+        // Obtener ubicación actual del conductor con validación
         let driverLocation = null;
         if (navigator.geolocation) {
             try {
                 const position = await new Promise((resolve, reject) => {
                     navigator.geolocation.getCurrentPosition(resolve, reject, {
                         enableHighAccuracy: true,
-                        timeout: 10000,
-                        maximumAge: 30000
+                        timeout: 15000,
+                        maximumAge: 0 // No usar ubicación en caché
                     });
                 });
                 
-                driverLocation = {
-                    lat: position.coords.latitude,
-                    lng: position.coords.longitude
-                };
+                // Validar que la ubicación sea real
+                if (validateRealLocation(position)) {
+                    driverLocation = {
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude,
+                        accuracy: position.coords.accuracy,
+                        timestamp: position.timestamp,
+                        altitude: position.coords.altitude,
+                        heading: position.coords.heading,
+                        speed: position.coords.speed
+                    };
+                    console.log('Driver location validated:', driverLocation);
+                } else {
+                    throw new Error('Ubicación no válida o simulada');
+                }
             } catch (error) {
                 console.error('Error getting driver location:', error);
+                showAlert('No se pudo obtener una ubicación válida. Verifica que la geolocalización esté habilitada.', 'error');
+                return;
             }
+        } else {
+            showAlert('Tu navegador no soporta geolocalización', 'error');
+            return;
         }
         
         // Actualizar estado del viaje en Firebase
@@ -2401,9 +2549,17 @@ function updateLiveDriverLocation(driverLocation, tripData) {
     // Obtener ubicación actual del usuario
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition((position) => {
+            // Validar ubicación del usuario
+            if (!validateUserLocation(position)) {
+                console.warn('⚠️ Ubicación del usuario no válida');
+                return;
+            }
+            
             const userLocation = {
                 lat: position.coords.latitude,
-                lng: position.coords.longitude
+                lng: position.coords.longitude,
+                accuracy: position.coords.accuracy,
+                timestamp: position.timestamp
             };
             
             // Crear/actualizar marcador del usuario
@@ -2450,7 +2606,7 @@ function updateLiveDriverLocation(driverLocation, tripData) {
                         if (trackingStatus) {
                             trackingStatus.innerHTML = `
                                 <span class="status-indicator">✅</span>
-                                <span class="status-text">Conductor rastreado</span>
+                                <span class="status-text">Conductor rastreado (ubicación validada)</span>
                             `;
                         }
                         
@@ -2579,20 +2735,43 @@ function startDriverLocationUpdates(tripId, tripData) {
         
         locationWatcher = navigator.geolocation.watchPosition(
             (position) => {
-                const location = {
-                    lat: position.coords.latitude,
-                    lng: position.coords.longitude
-                };
-                updateDriverMapLocation(tripId, location, tripData);
+                // Validar que la ubicación sea real antes de procesarla
+                if (validateRealLocation(position)) {
+                    const location = {
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude,
+                        accuracy: position.coords.accuracy,
+                        timestamp: position.timestamp,
+                        altitude: position.coords.altitude,
+                        heading: position.coords.heading,
+                        speed: position.coords.speed
+                    };
+                    updateDriverMapLocation(tripId, location, tripData);
+                } else {
+                    console.warn('⚠️ Ubicación del conductor no válida, ignorando...');
+                    showAlert('Ubicación no válida detectada. Verifica tu GPS.', 'warning');
+                }
             },
             (error) => {
                 console.error('Error getting driver location:', error);
-                showAlert('Error al obtener ubicación del conductor', 'warning');
+                let errorMessage = 'Error al obtener ubicación del conductor';
+                switch(error.code) {
+                    case error.PERMISSION_DENIED:
+                        errorMessage = 'Permisos de ubicación denegados';
+                        break;
+                    case error.POSITION_UNAVAILABLE:
+                        errorMessage = 'Ubicación no disponible';
+                        break;
+                    case error.TIMEOUT:
+                        errorMessage = 'Tiempo de espera agotado';
+                        break;
+                }
+                showAlert(errorMessage, 'warning');
             },
             { 
                 enableHighAccuracy: true, 
-                timeout: 10000, 
-                maximumAge: 5000 
+                timeout: 15000, 
+                maximumAge: 0 // No usar ubicación en caché
             }
         );
         
@@ -2604,14 +2783,28 @@ function startDriverLocationUpdates(tripId, tripData) {
 // Actualizar ubicación del conductor en el mapa
 async function updateDriverMapLocation(tripId, location, tripData) {
     try {
-        // Actualizar en Firebase con timestamp
+        // Validar movimiento real si hay ubicación anterior
+        if (window.lastDriverLocation) {
+            const timeDiff = Date.now() - (window.lastDriverLocation.timestamp || Date.now());
+            if (!detectRealMovement(location, window.lastDriverLocation, timeDiff)) {
+                console.warn('⚠️ Movimiento del conductor no válido, ignorando...');
+                return;
+            }
+        }
+        
+        // Guardar ubicación anterior para comparación
+        window.lastDriverLocation = location;
+        
+        // Actualizar en Firebase con timestamp y validación
         await window.updateDoc(window.doc(window.db, 'trips', tripId), {
             driverLocation: location,
             lastLocationUpdate: new Date(),
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            locationValidated: true,
+            accuracy: location.accuracy
         });
         
-        console.log('Driver location updated:', location);
+        console.log('✅ Driver location updated and validated:', location);
         
         // Actualizar marcador del conductor con animación suave
         if (driverMarker) {

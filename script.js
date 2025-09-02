@@ -52,14 +52,43 @@ function createParticles() {
 }
 
 // Cambiar entre pestañas
-function switchTab(tab) {
+function switchTab(tab, event) {
+    // Remover clase active de todos los botones
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-    event.target.classList.add('active');
     
+    // Agregar clase active al botón clickeado
+    if (event && event.target) {
+        event.target.classList.add('active');
+    }
+    
+    // Ocultar todas las secciones
     document.querySelectorAll('.form-section').forEach(section => {
         section.classList.remove('active');
     });
-    document.getElementById(tab + '-form').classList.add('active');
+    
+    // Mostrar la sección correspondiente
+    const targetSection = document.getElementById(tab + '-form');
+    if (targetSection) {
+        targetSection.classList.add('active');
+    }
+}
+
+// Función para sanitizar texto y prevenir XSS
+function sanitizeText(text) {
+    if (typeof text !== 'string') return '';
+    
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Función para crear elementos HTML de forma segura
+function createSafeHTML(template, data) {
+    // Reemplazar variables en el template de forma segura
+    return template.replace(/\$\{([^}]+)\}/g, (match, key) => {
+        const value = data[key];
+        return value ? sanitizeText(String(value)) : '';
+    });
 }
 
 // Mostrar alerta personalizada
@@ -69,9 +98,15 @@ function showAlert(message, type = 'info') {
     alertDiv.textContent = message;
     
     const container = document.querySelector('.form-container');
-    container.insertBefore(alertDiv, container.firstChild);
-    
-    setTimeout(() => alertDiv.remove(), 5000);
+    if (container) {
+        container.insertBefore(alertDiv, container.firstChild);
+        
+        setTimeout(() => {
+            if (alertDiv.parentNode) {
+                alertDiv.remove();
+            }
+        }, 5000);
+    }
 }
 
 // Validación de formularios
@@ -350,6 +385,95 @@ let liveDirectionsRenderer = null;
 let driverLiveMap = null;
 let driverDirectionsRenderer = null;
 
+// Sistema de cleanup para prevenir memory leaks
+const cleanupManager = {
+    listeners: new Set(),
+    watchers: new Set(),
+    intervals: new Set(),
+    timeouts: new Set(),
+    
+    addListener: function(listener) {
+        this.listeners.add(listener);
+        return listener;
+    },
+    
+    addWatcher: function(watcher) {
+        this.watchers.add(watcher);
+        return watcher;
+    },
+    
+    addInterval: function(interval) {
+        this.intervals.add(interval);
+        return interval;
+    },
+    
+    addTimeout: function(timeout) {
+        this.timeouts.add(timeout);
+        return timeout;
+    },
+    
+    cleanup: function() {
+        // Limpiar listeners de Firebase
+        this.listeners.forEach(listener => {
+            if (typeof listener === 'function') {
+                listener();
+            }
+        });
+        this.listeners.clear();
+        
+        // Limpiar watchers de geolocalización
+        this.watchers.forEach(watcher => {
+            if (watcher && navigator.geolocation) {
+                navigator.geolocation.clearWatch(watcher);
+            }
+        });
+        this.watchers.clear();
+        
+        // Limpiar intervals
+        this.intervals.forEach(interval => {
+            clearInterval(interval);
+        });
+        this.intervals.clear();
+        
+        // Limpiar timeouts
+        this.timeouts.forEach(timeout => {
+            clearTimeout(timeout);
+        });
+        this.timeouts.clear();
+        
+        // Limpiar mapas y marcadores
+        this.cleanupMaps();
+    },
+    
+    cleanupMaps: function() {
+        // Limpiar marcadores
+        [currentLocationMarker, destinationMarker, driverMarker, userMarker].forEach(marker => {
+            if (marker) {
+                marker.setMap(null);
+            }
+        });
+        
+        // Limpiar renderers
+        [directionsRenderer, trackingDirectionsRenderer, liveDirectionsRenderer, driverDirectionsRenderer].forEach(renderer => {
+            if (renderer) {
+                renderer.setMap(null);
+            }
+        });
+        
+        // Resetear variables
+        currentLocationMarker = null;
+        destinationMarker = null;
+        driverMarker = null;
+        userMarker = null;
+        directionsRenderer = null;
+        trackingDirectionsRenderer = null;
+        liveDirectionsRenderer = null;
+        driverDirectionsRenderer = null;
+        locationWatcher = null;
+        currentTripId = null;
+    }
+};
+
 // Configuración de tarifas
 const FARE_CONFIG = {
     pricePerKm: 30.00,
@@ -410,21 +534,35 @@ function initMap() {
     getCurrentLocation();
 }
 
-// Obtener ubicación actual
+// Obtener ubicación actual con manejo mejorado de errores
 function getCurrentLocation() {
     const locationInput = document.getElementById('currentLocation');
+    if (!locationInput) return;
+    
     locationInput.value = 'Obteniendo ubicación...';
     
-    if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                const pos = {
-                    lat: position.coords.latitude,
-                    lng: position.coords.longitude
-                };
-                
-                setCurrentLocationMarker(pos);
-                
+    if (!navigator.geolocation) {
+        locationInput.value = 'Geolocalización no soportada';
+        showAlert('Tu navegador no soporta geolocalización', 'error');
+        return;
+    }
+    
+    const options = {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 300000 // 5 minutos
+    };
+    
+    navigator.geolocation.getCurrentPosition(
+        (position) => {
+            const pos = {
+                lat: position.coords.latitude,
+                lng: position.coords.longitude
+            };
+            
+            setCurrentLocationMarker(pos);
+            
+            if (typeof google !== 'undefined' && google.maps) {
                 const geocoder = new google.maps.Geocoder();
                 geocoder.geocode({ location: pos }, (results, status) => {
                     if (status === 'OK' && results[0]) {
@@ -433,13 +571,38 @@ function getCurrentLocation() {
                         locationInput.value = `${pos.lat.toFixed(6)}, ${pos.lng.toFixed(6)}`;
                     }
                 });
-            },
-            () => {
-                locationInput.value = 'No se pudo obtener la ubicación';
-                showAlert('Error al obtener ubicación', 'warning');
+            } else {
+                locationInput.value = `${pos.lat.toFixed(6)}, ${pos.lng.toFixed(6)}`;
             }
-        );
-    }
+        },
+        (error) => {
+            let errorMessage = 'Error al obtener ubicación';
+            let alertType = 'warning';
+            
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    errorMessage = 'Permisos de ubicación denegados. Por favor, habilita la geolocalización en tu navegador.';
+                    alertType = 'error';
+                    locationInput.value = 'Permisos denegados';
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    errorMessage = 'Ubicación no disponible. Verifica tu conexión GPS.';
+                    locationInput.value = 'Ubicación no disponible';
+                    break;
+                case error.TIMEOUT:
+                    errorMessage = 'Tiempo de espera agotado. Intenta nuevamente.';
+                    locationInput.value = 'Tiempo agotado';
+                    break;
+                default:
+                    errorMessage = 'Error desconocido al obtener ubicación.';
+                    locationInput.value = 'Error desconocido';
+                    break;
+            }
+            
+            showAlert(errorMessage, alertType);
+        },
+        options
+    );
 }
 
 // Establecer marcador de ubicación actual
@@ -552,12 +715,17 @@ function showMainApp(user) {
 function logout() {
     if (window.auth && window.auth.currentUser) {
         window.auth.signOut().then(() => {
+            // Limpiar recursos antes de cerrar sesión
+            cleanupManager.cleanup();
+            
             // Mostrar contenedor de autenticación
             document.getElementById('authContainer').style.display = 'flex';
             
             // Ocultar barra de tareas y aplicación principal
             document.getElementById('navbar').style.display = 'none';
             document.getElementById('mainApp').style.display = 'none';
+            document.getElementById('driverNavbar').style.display = 'none';
+            document.getElementById('driverApp').style.display = 'none';
             
             // Mostrar formulario de usuario por defecto
             document.querySelectorAll('.form-section').forEach(section => {
@@ -904,24 +1072,36 @@ async function loadUserTrips() {
                     'cancelled': 'status-cancelled'
                 };
                 
-                tripsHTML += `
+                // Crear HTML de forma segura
+                const tripHTML = createSafeHTML(`
                     <div class="trip-history-card">
                         <div class="trip-header">
-                            <span class="trip-date">${formatTripDate(trip.createdAt.toDate())}</span>
-                            <span class="trip-status ${statusClass[trip.status]}">${statusText[trip.status]}</span>
+                            <span class="trip-date">\${tripDate}</span>
+                            <span class="trip-status \${statusClass}">\${statusText}</span>
                         </div>
                         <div class="trip-route">
-                            <div class="route-point">📍 ${trip.origin}</div>
+                            <div class="route-point">📍 \${origin}</div>
                             <div class="route-arrow">→</div>
-                            <div class="route-point">📍 ${trip.destination}</div>
+                            <div class="route-point">📍 \${destination}</div>
                         </div>
                         <div class="trip-details">
-                            <span class="trip-distance">${trip.distance} km</span>
-                            <span class="trip-fare">RD$${trip.totalFare.toFixed(2)}</span>
-                            ${trip.driverName ? `<span class="trip-driver">👤 ${trip.driverName}</span>` : ''}
+                            <span class="trip-distance">\${distance} km</span>
+                            <span class="trip-fare">RD$\${totalFare}</span>
+                            \${driverInfo}
                         </div>
                     </div>
-                `;
+                `, {
+                    tripDate: formatTripDate(trip.createdAt.toDate()),
+                    statusClass: statusClass[trip.status],
+                    statusText: statusText[trip.status],
+                    origin: trip.origin,
+                    destination: trip.destination,
+                    distance: trip.distance,
+                    totalFare: trip.totalFare.toFixed(2),
+                    driverInfo: trip.driverName ? `<span class="trip-driver">👤 ${sanitizeText(trip.driverName)}</span>` : ''
+                });
+                
+                tripsHTML += tripHTML;
             });
             
             activityList.innerHTML = tripsHTML;
@@ -1068,30 +1248,42 @@ function loadAvailableTrips() {
                     // Calcular ganancias del conductor (95%)
                     const driverEarnings = (trip.totalFare * 0.95).toFixed(2);
                     
-                    tripsHTML += `
-                        <div class="trip-card" data-trip-id="${tripId}">
+                    // Crear HTML de forma segura
+                    const tripCardHTML = createSafeHTML(`
+                        <div class="trip-card" data-trip-id="\${tripId}">
                             <div class="trip-info">
                                 <div class="trip-route">
-                                    <div class="route-point">📍 ${trip.origin}</div>
+                                    <div class="route-point">📍 \${origin}</div>
                                     <div class="route-arrow">→</div>
-                                    <div class="route-point">📍 ${trip.destination}</div>
+                                    <div class="route-point">📍 \${destination}</div>
                                 </div>
                                 <div class="trip-details">
-                                    <span class="distance">${trip.distance || 'N/A'} km</span>
-                                    <span class="fare">RD$${trip.totalFare.toFixed(2)}</span>
-                                    <span class="earnings">Ganas: RD$${driverEarnings}</span>
+                                    <span class="distance">\${distance} km</span>
+                                    <span class="fare">RD$\${totalFare}</span>
+                                    <span class="earnings">Ganas: RD$\${driverEarnings}</span>
                                 </div>
                                 <div class="trip-user">
-                                    <span class="user-name">👤 ${trip.userName || 'Usuario'}</span>
-                                    <span class="trip-time">${trip.createdAt ? formatTime(trip.createdAt.toDate()) : 'Ahora'}</span>
+                                    <span class="user-name">👤 \${userName}</span>
+                                    <span class="trip-time">\${tripTime}</span>
                                 </div>
                             </div>
                             <div class="trip-actions">
-                                <button class="accept-btn" onclick="acceptTrip('${tripId}')">Aceptar</button>
-                                <button class="decline-btn" onclick="declineTrip('${tripId}')">Rechazar</button>
+                                <button class="accept-btn" onclick="acceptTrip('\${tripId}')">Aceptar</button>
+                                <button class="decline-btn" onclick="declineTrip('\${tripId}')">Rechazar</button>
                             </div>
                         </div>
-                    `;
+                    `, {
+                        tripId: tripId,
+                        origin: trip.origin,
+                        destination: trip.destination,
+                        distance: trip.distance || 'N/A',
+                        totalFare: trip.totalFare.toFixed(2),
+                        driverEarnings: driverEarnings,
+                        userName: trip.userName || 'Usuario',
+                        tripTime: trip.createdAt ? formatTime(trip.createdAt.toDate()) : 'Ahora'
+                    });
+                    
+                    tripsHTML += tripCardHTML;
                 });
                 
                 tripsList.innerHTML = tripsHTML;
@@ -1101,6 +1293,11 @@ function loadAvailableTrips() {
                 tripsList.innerHTML = `<p>Error: ${error.message}</p>`;
             }
         );
+        
+        // Agregar al cleanup manager
+        if (tripsListener) {
+            cleanupManager.addListener(tripsListener);
+        }
         
     } catch (error) {
         console.error('Setup error:', error);
@@ -1359,11 +1556,18 @@ async function completeTrip(tripId) {
 }
 
 // Navegación del conductor
-function showDriverSection(section) {
+function showDriverSection(section, event) {
     document.querySelectorAll('#driverNavbar .nav-item').forEach(item => {
         item.classList.remove('active');
     });
-    event.target.closest('.nav-item').classList.add('active');
+    
+    // Agregar clase active al elemento clickeado si existe el evento
+    if (event && event.target) {
+        const navItem = event.target.closest('.nav-item');
+        if (navItem) {
+            navItem.classList.add('active');
+        }
+    }
     
     const driverContent = document.getElementById('driverContent');
     
@@ -1419,6 +1623,16 @@ document.addEventListener('DOMContentLoaded', function() {
             closeRideModal();
         }
     };
+    
+    // Cleanup automático al cerrar la página
+    window.addEventListener('beforeunload', function() {
+        cleanupManager.cleanup();
+    });
+    
+    // Cleanup cuando se cambia de página (SPA)
+    window.addEventListener('pagehide', function() {
+        cleanupManager.cleanup();
+    });
 });
 
 // Mostrar formulario de login
@@ -1446,12 +1660,19 @@ function showDriverSection() {
 }
 
 // Mostrar sección de navegación
-function showSection(section) {
+function showSection(section, event) {
     // Actualizar botones activos
     document.querySelectorAll('.nav-item').forEach(item => {
         item.classList.remove('active');
     });
-    event.target.closest('.nav-item').classList.add('active');
+    
+    // Agregar clase active al elemento clickeado si existe el evento
+    if (event && event.target) {
+        const navItem = event.target.closest('.nav-item');
+        if (navItem) {
+            navItem.classList.add('active');
+        }
+    }
     
     // Mostrar contenido según la sección
     const mainApp = document.getElementById('mainApp');

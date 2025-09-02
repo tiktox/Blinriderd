@@ -1367,31 +1367,3 @@ input:valid:not(:placeholder-shown) {
     color: #22C55E;
     margin-bottom: 8px;
 }
-
-/* Indicador de tracking */
-.tracking-status {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 8px;
-    padding: 8px 12px;
-    background: rgba(59, 130, 246, 0.1);
-    border: 1px solid rgba(59, 130, 246, 0.3);
-    border-radius: 8px;
-    font-size: 12px;
-}
-
-.tracking-status .status-indicator {
-    font-size: 14px;
-    animation: pulse 2s infinite;
-}
-
-.tracking-status .status-text {
-    color: #3B82F6;
-    font-weight: 500;
-}
-
-@keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-}

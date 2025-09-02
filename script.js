@@ -1,6 +1,6 @@
 // Firebase initialization will be handled by HTML script tags
 // This ensures compatibility across different environments
- 
+
 // Check Firebase connection
 function checkFirebaseConnection() {
     if (window.auth && window.db && window.collection && window.query && window.where && window.onSnapshot) {
@@ -52,175 +52,14 @@ function createParticles() {
 }
 
 // Cambiar entre pestañas
-function switchTab(tab, event) {
-    // Remover clase active de todos los botones
+function switchTab(tab) {
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
     
-    // Agregar clase active al botón clickeado
-    if (event && event.target) {
-        event.target.classList.add('active');
-    }
-    
-    // Ocultar todas las secciones
     document.querySelectorAll('.form-section').forEach(section => {
         section.classList.remove('active');
     });
-    
-    // Mostrar la sección correspondiente
-    const targetSection = document.getElementById(tab + '-form');
-    if (targetSection) {
-        targetSection.classList.add('active');
-    }
-}
-
-// Función para validar que la ubicación sea real
-function validateRealLocation(position) {
-    if (!position || !position.coords) {
-        console.log('❌ No hay coordenadas en la posición');
-        return false;
-    }
-    
-    const { latitude, longitude, accuracy, timestamp } = position.coords;
-    
-    // Validar coordenadas válidas
-    if (typeof latitude !== 'number' || typeof longitude !== 'number') {
-        console.log('❌ Coordenadas no son números válidos');
-        return false;
-    }
-    
-    // Validar rango de coordenadas (República Dominicana aproximadamente)
-    if (latitude < 17.0 || latitude > 20.0 || longitude < -72.0 || longitude > -68.0) {
-        console.log('❌ Ubicación fuera de República Dominicana');
-        return false;
-    }
-    
-    // Validar precisión (debe ser menor a 100 metros)
-    if (accuracy > 100) {
-        console.log('❌ Precisión muy baja:', accuracy, 'metros');
-        return false;
-    }
-    
-    // Validar timestamp (debe ser reciente, no más de 30 segundos)
-    const now = Date.now();
-    const positionTime = timestamp || now;
-    const timeDiff = Math.abs(now - positionTime);
-    
-    if (timeDiff > 30000) { // 30 segundos
-        console.log('❌ Ubicación muy antigua:', timeDiff, 'ms');
-        return false;
-    }
-    
-    // Validar que no sea una ubicación simulada (coordenadas exactas)
-    if (latitude === Math.floor(latitude) && longitude === Math.floor(longitude)) {
-        console.log('❌ Coordenadas parecen simuladas (números enteros)');
-        return false;
-    }
-    
-    // Validar que no sea una ubicación de prueba común
-    const commonTestLocations = [
-        { lat: 18.4861, lng: -69.9312 }, // Santo Domingo
-        { lat: 0, lng: 0 }, // Coordenadas 0,0
-        { lat: 37.7749, lng: -122.4194 }, // San Francisco (común en pruebas)
-        { lat: 40.7128, lng: -74.0060 } // Nueva York (común en pruebas)
-    ];
-    
-    for (const testLoc of commonTestLocations) {
-        const distance = calculateDistance(latitude, longitude, testLoc.lat, testLoc.lng);
-        if (distance < 10) { // Menos de 10 metros de distancia
-            console.log('❌ Ubicación coincide con ubicación de prueba común');
-            return false;
-        }
-    }
-    
-    console.log('✅ Ubicación validada como real');
-    return true;
-}
-
-// Función para calcular distancia entre dos puntos
-function calculateDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371e3; // Radio de la Tierra en metros
-    const φ1 = lat1 * Math.PI/180;
-    const φ2 = lat2 * Math.PI/180;
-    const Δφ = (lat2-lat1) * Math.PI/180;
-    const Δλ = (lon2-lon1) * Math.PI/180;
-
-    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-              Math.cos(φ1) * Math.cos(φ2) *
-              Math.sin(Δλ/2) * Math.sin(Δλ/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-
-    return R * c; // Distancia en metros
-}
-
-// Función para detectar movimiento real del conductor
-function detectRealMovement(currentLocation, lastLocation, timeDiff) {
-    if (!lastLocation) return true; // Primera ubicación
-    
-    const distance = calculateDistance(
-        currentLocation.lat, currentLocation.lng,
-        lastLocation.lat, lastLocation.lng
-    );
-    
-    // Calcular velocidad en km/h
-    const speed = (distance / 1000) / (timeDiff / 3600000);
-    
-    // Validar que la velocidad sea realista para un vehículo
-    if (speed > 120) { // Más de 120 km/h es sospechoso
-        console.log('⚠️ Velocidad sospechosa:', speed, 'km/h');
-        return false;
-    }
-    
-    // Validar que haya movimiento mínimo (al menos 5 metros en 30 segundos)
-    if (distance < 5 && timeDiff > 30000) {
-        console.log('⚠️ Conductor no se está moviendo');
-        return false;
-    }
-    
-    return true;
-}
-
-// Función para validar ubicación del usuario también
-function validateUserLocation(position) {
-    if (!position || !position.coords) {
-        return false;
-    }
-    
-    const { latitude, longitude, accuracy } = position.coords;
-    
-    // Validar coordenadas válidas
-    if (typeof latitude !== 'number' || typeof longitude !== 'number') {
-        return false;
-    }
-    
-    // Validar rango de coordenadas (República Dominicana)
-    if (latitude < 17.0 || latitude > 20.0 || longitude < -72.0 || longitude > -68.0) {
-        return false;
-    }
-    
-    // Validar precisión (debe ser menor a 200 metros para usuario)
-    if (accuracy > 200) {
-        return false;
-    }
-    
-    return true;
-}
-
-// Función para sanitizar texto y prevenir XSS
-function sanitizeText(text) {
-    if (typeof text !== 'string') return '';
-    
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-// Función para crear elementos HTML de forma segura
-function createSafeHTML(template, data) {
-    // Reemplazar variables en el template de forma segura
-    return template.replace(/\$\{([^}]+)\}/g, (match, key) => {
-        const value = data[key];
-        return value ? sanitizeText(String(value)) : '';
-    });
+    document.getElementById(tab + '-form').classList.add('active');
 }
 
 // Mostrar alerta personalizada
@@ -230,15 +69,9 @@ function showAlert(message, type = 'info') {
     alertDiv.textContent = message;
     
     const container = document.querySelector('.form-container');
-    if (container) {
-        container.insertBefore(alertDiv, container.firstChild);
-        
-        setTimeout(() => {
-            if (alertDiv.parentNode) {
-                alertDiv.remove();
-            }
-        }, 5000);
-    }
+    container.insertBefore(alertDiv, container.firstChild);
+    
+    setTimeout(() => alertDiv.remove(), 5000);
 }
 
 // Validación de formularios
@@ -517,95 +350,6 @@ let liveDirectionsRenderer = null;
 let driverLiveMap = null;
 let driverDirectionsRenderer = null;
 
-// Sistema de cleanup para prevenir memory leaks
-const cleanupManager = {
-    listeners: new Set(),
-    watchers: new Set(),
-    intervals: new Set(),
-    timeouts: new Set(),
-    
-    addListener: function(listener) {
-        this.listeners.add(listener);
-        return listener;
-    },
-    
-    addWatcher: function(watcher) {
-        this.watchers.add(watcher);
-        return watcher;
-    },
-    
-    addInterval: function(interval) {
-        this.intervals.add(interval);
-        return interval;
-    },
-    
-    addTimeout: function(timeout) {
-        this.timeouts.add(timeout);
-        return timeout;
-    },
-    
-    cleanup: function() {
-        // Limpiar listeners de Firebase
-        this.listeners.forEach(listener => {
-            if (typeof listener === 'function') {
-                listener();
-            }
-        });
-        this.listeners.clear();
-        
-        // Limpiar watchers de geolocalización
-        this.watchers.forEach(watcher => {
-            if (watcher && navigator.geolocation) {
-                navigator.geolocation.clearWatch(watcher);
-            }
-        });
-        this.watchers.clear();
-        
-        // Limpiar intervals
-        this.intervals.forEach(interval => {
-            clearInterval(interval);
-        });
-        this.intervals.clear();
-        
-        // Limpiar timeouts
-        this.timeouts.forEach(timeout => {
-            clearTimeout(timeout);
-        });
-        this.timeouts.clear();
-        
-        // Limpiar mapas y marcadores
-        this.cleanupMaps();
-    },
-    
-    cleanupMaps: function() {
-        // Limpiar marcadores
-        [currentLocationMarker, destinationMarker, driverMarker, userMarker].forEach(marker => {
-            if (marker) {
-                marker.setMap(null);
-            }
-        });
-        
-        // Limpiar renderers
-        [directionsRenderer, trackingDirectionsRenderer, liveDirectionsRenderer, driverDirectionsRenderer].forEach(renderer => {
-            if (renderer) {
-                renderer.setMap(null);
-            }
-        });
-        
-        // Resetear variables
-        currentLocationMarker = null;
-        destinationMarker = null;
-        driverMarker = null;
-        userMarker = null;
-        directionsRenderer = null;
-        trackingDirectionsRenderer = null;
-        liveDirectionsRenderer = null;
-        driverDirectionsRenderer = null;
-        locationWatcher = null;
-        currentTripId = null;
-    }
-};
-
 // Configuración de tarifas
 const FARE_CONFIG = {
     pricePerKm: 30.00,
@@ -666,35 +410,21 @@ function initMap() {
     getCurrentLocation();
 }
 
-// Obtener ubicación actual con manejo mejorado de errores
+// Obtener ubicación actual
 function getCurrentLocation() {
     const locationInput = document.getElementById('currentLocation');
-    if (!locationInput) return;
-    
     locationInput.value = 'Obteniendo ubicación...';
     
-    if (!navigator.geolocation) {
-        locationInput.value = 'Geolocalización no soportada';
-        showAlert('Tu navegador no soporta geolocalización', 'error');
-        return;
-    }
-    
-    const options = {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 300000 // 5 minutos
-    };
-    
-    navigator.geolocation.getCurrentPosition(
-        (position) => {
-            const pos = {
-                lat: position.coords.latitude,
-                lng: position.coords.longitude
-            };
-            
-            setCurrentLocationMarker(pos);
-            
-            if (typeof google !== 'undefined' && google.maps) {
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const pos = {
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude
+                };
+                
+                setCurrentLocationMarker(pos);
+                
                 const geocoder = new google.maps.Geocoder();
                 geocoder.geocode({ location: pos }, (results, status) => {
                     if (status === 'OK' && results[0]) {
@@ -703,38 +433,13 @@ function getCurrentLocation() {
                         locationInput.value = `${pos.lat.toFixed(6)}, ${pos.lng.toFixed(6)}`;
                     }
                 });
-            } else {
-                locationInput.value = `${pos.lat.toFixed(6)}, ${pos.lng.toFixed(6)}`;
+            },
+            () => {
+                locationInput.value = 'No se pudo obtener la ubicación';
+                showAlert('Error al obtener ubicación', 'warning');
             }
-        },
-        (error) => {
-            let errorMessage = 'Error al obtener ubicación';
-            let alertType = 'warning';
-            
-            switch(error.code) {
-                case error.PERMISSION_DENIED:
-                    errorMessage = 'Permisos de ubicación denegados. Por favor, habilita la geolocalización en tu navegador.';
-                    alertType = 'error';
-                    locationInput.value = 'Permisos denegados';
-                    break;
-                case error.POSITION_UNAVAILABLE:
-                    errorMessage = 'Ubicación no disponible. Verifica tu conexión GPS.';
-                    locationInput.value = 'Ubicación no disponible';
-                    break;
-                case error.TIMEOUT:
-                    errorMessage = 'Tiempo de espera agotado. Intenta nuevamente.';
-                    locationInput.value = 'Tiempo agotado';
-                    break;
-                default:
-                    errorMessage = 'Error desconocido al obtener ubicación.';
-                    locationInput.value = 'Error desconocido';
-                    break;
-            }
-            
-            showAlert(errorMessage, alertType);
-        },
-        options
-    );
+        );
+    }
 }
 
 // Establecer marcador de ubicación actual
@@ -847,17 +552,12 @@ function showMainApp(user) {
 function logout() {
     if (window.auth && window.auth.currentUser) {
         window.auth.signOut().then(() => {
-            // Limpiar recursos antes de cerrar sesión
-            cleanupManager.cleanup();
-            
             // Mostrar contenedor de autenticación
             document.getElementById('authContainer').style.display = 'flex';
             
             // Ocultar barra de tareas y aplicación principal
             document.getElementById('navbar').style.display = 'none';
             document.getElementById('mainApp').style.display = 'none';
-            document.getElementById('driverNavbar').style.display = 'none';
-            document.getElementById('driverApp').style.display = 'none';
             
             // Mostrar formulario de usuario por defecto
             document.querySelectorAll('.form-section').forEach(section => {
@@ -1032,10 +732,6 @@ function showTripAccepted(trip) {
                 <div class="eta-info">
                     <div class="eta-display" id="etaDisplay">Calculando tiempo...</div>
                     <div class="distance-display" id="distanceDisplay"></div>
-                    <div class="tracking-status" id="trackingStatus">
-                        <span class="status-indicator">🔄</span>
-                        <span class="status-text">Rastreando conductor...</span>
-                    </div>
                 </div>
                 
                 <div class="trip-actions">
@@ -1057,9 +753,6 @@ function showTripAccepted(trip) {
         
         // Escuchar cambios en el estado del viaje para detectar llegada
         listenForDriverArrival(trip.tripId || 'current');
-        
-        // Iniciar tracking de ubicación del conductor en tiempo real
-        startDriverLocationListener(trip.tripId || 'current', trip);
     }, 100);
 }
 
@@ -1083,52 +776,6 @@ function startUserLocationTracking(tripId) {
             { enableHighAccuracy: true, timeout: 5000, maximumAge: 10000 }
         );
     }
-}
-
-// Iniciar listener de ubicación del conductor para el usuario
-function startDriverLocationListener(tripId, tripData) {
-    const tripRef = window.doc(window.db, 'trips', tripId);
-    
-    const driverLocationListener = window.onSnapshot(tripRef, (doc) => {
-        if (doc.exists()) {
-            const data = doc.data();
-            
-            // Si hay ubicación del conductor, actualizar el mapa
-            if (data.driverLocation && data.status === 'accepted') {
-                updateLiveDriverLocation(data.driverLocation, tripData);
-            }
-            
-            // Si el conductor ha llegado
-            if (data.status === 'driver_arrived' && data.driverArrivedMessage) {
-                // Completar icono de llegada
-                const arrivalStep = document.getElementById('arrivalStep');
-                const drivingStep = document.getElementById('drivingStep');
-                
-                if (arrivalStep && drivingStep) {
-                    drivingStep.classList.remove('active');
-                    drivingStep.classList.add('completed');
-                    arrivalStep.classList.add('completed');
-                    arrivalStep.innerHTML = `
-                        <div class="step-dot completed">✓</div>
-                        <span>Llegada</span>
-                    `;
-                }
-                
-                // Mostrar mensaje de llegada
-                const arrivalMessage = document.getElementById('arrivalMessage');
-                if (arrivalMessage) {
-                    arrivalMessage.style.display = 'block';
-                    arrivalMessage.querySelector('.message-text').textContent = data.driverArrivedMessage;
-                }
-                
-                // Mostrar alerta
-                showAlert(data.driverArrivedMessage, 'success');
-            }
-        }
-    });
-    
-    // Agregar al cleanup manager
-    cleanupManager.addListener(driverLocationListener);
 }
 
 // Escuchar llegada del conductor
@@ -1257,36 +904,24 @@ async function loadUserTrips() {
                     'cancelled': 'status-cancelled'
                 };
                 
-                // Crear HTML de forma segura
-                const tripHTML = createSafeHTML(`
+                tripsHTML += `
                     <div class="trip-history-card">
                         <div class="trip-header">
-                            <span class="trip-date">\${tripDate}</span>
-                            <span class="trip-status \${statusClass}">\${statusText}</span>
+                            <span class="trip-date">${formatTripDate(trip.createdAt.toDate())}</span>
+                            <span class="trip-status ${statusClass[trip.status]}">${statusText[trip.status]}</span>
                         </div>
                         <div class="trip-route">
-                            <div class="route-point">📍 \${origin}</div>
+                            <div class="route-point">📍 ${trip.origin}</div>
                             <div class="route-arrow">→</div>
-                            <div class="route-point">📍 \${destination}</div>
+                            <div class="route-point">📍 ${trip.destination}</div>
                         </div>
                         <div class="trip-details">
-                            <span class="trip-distance">\${distance} km</span>
-                            <span class="trip-fare">RD$\${totalFare}</span>
-                            \${driverInfo}
+                            <span class="trip-distance">${trip.distance} km</span>
+                            <span class="trip-fare">RD$${trip.totalFare.toFixed(2)}</span>
+                            ${trip.driverName ? `<span class="trip-driver">👤 ${trip.driverName}</span>` : ''}
                         </div>
                     </div>
-                `, {
-                    tripDate: formatTripDate(trip.createdAt.toDate()),
-                    statusClass: statusClass[trip.status],
-                    statusText: statusText[trip.status],
-                    origin: trip.origin,
-                    destination: trip.destination,
-                    distance: trip.distance,
-                    totalFare: trip.totalFare.toFixed(2),
-                    driverInfo: trip.driverName ? `<span class="trip-driver">👤 ${sanitizeText(trip.driverName)}</span>` : ''
-                });
-                
-                tripsHTML += tripHTML;
+                `;
             });
             
             activityList.innerHTML = tripsHTML;
@@ -1433,42 +1068,30 @@ function loadAvailableTrips() {
                     // Calcular ganancias del conductor (95%)
                     const driverEarnings = (trip.totalFare * 0.95).toFixed(2);
                     
-                    // Crear HTML de forma segura
-                    const tripCardHTML = createSafeHTML(`
-                        <div class="trip-card" data-trip-id="\${tripId}">
+                    tripsHTML += `
+                        <div class="trip-card" data-trip-id="${tripId}">
                             <div class="trip-info">
                                 <div class="trip-route">
-                                    <div class="route-point">📍 \${origin}</div>
+                                    <div class="route-point">📍 ${trip.origin}</div>
                                     <div class="route-arrow">→</div>
-                                    <div class="route-point">📍 \${destination}</div>
+                                    <div class="route-point">📍 ${trip.destination}</div>
                                 </div>
                                 <div class="trip-details">
-                                    <span class="distance">\${distance} km</span>
-                                    <span class="fare">RD$\${totalFare}</span>
-                                    <span class="earnings">Ganas: RD$\${driverEarnings}</span>
+                                    <span class="distance">${trip.distance || 'N/A'} km</span>
+                                    <span class="fare">RD$${trip.totalFare.toFixed(2)}</span>
+                                    <span class="earnings">Ganas: RD$${driverEarnings}</span>
                                 </div>
                                 <div class="trip-user">
-                                    <span class="user-name">👤 \${userName}</span>
-                                    <span class="trip-time">\${tripTime}</span>
+                                    <span class="user-name">👤 ${trip.userName || 'Usuario'}</span>
+                                    <span class="trip-time">${trip.createdAt ? formatTime(trip.createdAt.toDate()) : 'Ahora'}</span>
                                 </div>
                             </div>
                             <div class="trip-actions">
-                                <button class="accept-btn" onclick="acceptTrip('\${tripId}')">Aceptar</button>
-                                <button class="decline-btn" onclick="declineTrip('\${tripId}')">Rechazar</button>
+                                <button class="accept-btn" onclick="acceptTrip('${tripId}')">Aceptar</button>
+                                <button class="decline-btn" onclick="declineTrip('${tripId}')">Rechazar</button>
                             </div>
                         </div>
-                    `, {
-                        tripId: tripId,
-                        origin: trip.origin,
-                        destination: trip.destination,
-                        distance: trip.distance || 'N/A',
-                        totalFare: trip.totalFare.toFixed(2),
-                        driverEarnings: driverEarnings,
-                        userName: trip.userName || 'Usuario',
-                        tripTime: trip.createdAt ? formatTime(trip.createdAt.toDate()) : 'Ahora'
-                    });
-                    
-                    tripsHTML += tripCardHTML;
+                    `;
                 });
                 
                 tripsList.innerHTML = tripsHTML;
@@ -1478,11 +1101,6 @@ function loadAvailableTrips() {
                 tripsList.innerHTML = `<p>Error: ${error.message}</p>`;
             }
         );
-        
-        // Agregar al cleanup manager
-        if (tripsListener) {
-            cleanupManager.addListener(tripsListener);
-        }
         
     } catch (error) {
         console.error('Setup error:', error);
@@ -1518,51 +1136,12 @@ async function acceptTrip(tripId) {
         
         const tripData = tripDoc.data();
         
-        // Obtener ubicación actual del conductor con validación
-        let driverLocation = null;
-        if (navigator.geolocation) {
-            try {
-                const position = await new Promise((resolve, reject) => {
-                    navigator.geolocation.getCurrentPosition(resolve, reject, {
-                        enableHighAccuracy: true,
-                        timeout: 15000,
-                        maximumAge: 0 // No usar ubicación en caché
-                    });
-                });
-                
-                // Validar que la ubicación sea real
-                if (validateRealLocation(position)) {
-                    driverLocation = {
-                        lat: position.coords.latitude,
-                        lng: position.coords.longitude,
-                        accuracy: position.coords.accuracy,
-                        timestamp: position.timestamp,
-                        altitude: position.coords.altitude,
-                        heading: position.coords.heading,
-                        speed: position.coords.speed
-                    };
-                    console.log('Driver location validated:', driverLocation);
-                } else {
-                    throw new Error('Ubicación no válida o simulada');
-                }
-            } catch (error) {
-                console.error('Error getting driver location:', error);
-                showAlert('No se pudo obtener una ubicación válida. Verifica que la geolocalización esté habilitada.', 'error');
-                return;
-            }
-        } else {
-            showAlert('Tu navegador no soporta geolocalización', 'error');
-            return;
-        }
-        
         // Actualizar estado del viaje en Firebase
         await window.updateDoc(window.doc(window.db, 'trips', tripId), {
             status: 'accepted',
             driverId: currentUser.uid,
             driverName: currentUser.displayName || 'Conductor',
-            acceptedAt: new Date(),
-            driverLocation: driverLocation,
-            lastLocationUpdate: new Date()
+            acceptedAt: new Date()
         });
         
         showAlert('Viaje aceptado! Dirigiéndote al cliente...', 'success');
@@ -1671,8 +1250,6 @@ function showActiveTrip(tripId, tripData) {
     // Inicializar mapa del conductor
     setTimeout(() => {
         initDriverLiveMap(tripId, tripData);
-        // Iniciar tracking inmediatamente
-        startDriverLocationUpdates(tripId, tripData);
     }, 100);
 }
 
@@ -1782,18 +1359,11 @@ async function completeTrip(tripId) {
 }
 
 // Navegación del conductor
-function showDriverSection(section, event) {
+function showDriverSection(section) {
     document.querySelectorAll('#driverNavbar .nav-item').forEach(item => {
         item.classList.remove('active');
     });
-    
-    // Agregar clase active al elemento clickeado si existe el evento
-    if (event && event.target) {
-        const navItem = event.target.closest('.nav-item');
-        if (navItem) {
-            navItem.classList.add('active');
-        }
-    }
+    event.target.closest('.nav-item').classList.add('active');
     
     const driverContent = document.getElementById('driverContent');
     
@@ -1849,16 +1419,6 @@ document.addEventListener('DOMContentLoaded', function() {
             closeRideModal();
         }
     };
-    
-    // Cleanup automático al cerrar la página
-    window.addEventListener('beforeunload', function() {
-        cleanupManager.cleanup();
-    });
-    
-    // Cleanup cuando se cambia de página (SPA)
-    window.addEventListener('pagehide', function() {
-        cleanupManager.cleanup();
-    });
 });
 
 // Mostrar formulario de login
@@ -1886,19 +1446,12 @@ function showDriverSection() {
 }
 
 // Mostrar sección de navegación
-function showSection(section, event) {
+function showSection(section) {
     // Actualizar botones activos
     document.querySelectorAll('.nav-item').forEach(item => {
         item.classList.remove('active');
     });
-    
-    // Agregar clase active al elemento clickeado si existe el evento
-    if (event && event.target) {
-        const navItem = event.target.closest('.nav-item');
-        if (navItem) {
-            navItem.classList.add('active');
-        }
-    }
+    event.target.closest('.nav-item').classList.add('active');
     
     // Mostrar contenido según la sección
     const mainApp = document.getElementById('mainApp');
@@ -2481,11 +2034,6 @@ function initLiveTrackingMap(tripId, tripData) {
     
     // Configurar marcadores y tracking
     setupLiveTracking(tripId, tripData);
-    
-    // Si ya hay ubicación del conductor, mostrarla inmediatamente
-    if (tripData.driverLocation) {
-        updateLiveDriverLocation(tripData.driverLocation, tripData);
-    }
 }
 
 // Configurar tracking en vivo
@@ -2524,8 +2072,6 @@ function setupLiveTracking(tripId, tripData) {
 
 // Actualizar ubicación del conductor en tiempo real
 function updateLiveDriverLocation(driverLocation, tripData) {
-    if (!liveTrackingMap || !driverLocation) return;
-    
     // Actualizar marcador del conductor
     if (driverMarker) {
         driverMarker.setPosition(driverLocation);
@@ -2549,17 +2095,9 @@ function updateLiveDriverLocation(driverLocation, tripData) {
     // Obtener ubicación actual del usuario
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition((position) => {
-            // Validar ubicación del usuario
-            if (!validateUserLocation(position)) {
-                console.warn('⚠️ Ubicación del usuario no válida');
-                return;
-            }
-            
             const userLocation = {
                 lat: position.coords.latitude,
-                lng: position.coords.longitude,
-                accuracy: position.coords.accuracy,
-                timestamp: position.timestamp
+                lng: position.coords.longitude
             };
             
             // Crear/actualizar marcador del usuario
@@ -2583,49 +2121,25 @@ function updateLiveDriverLocation(driverLocation, tripData) {
             }
             
             // Crear trayectoria entre conductor y usuario
-            if (typeof google !== 'undefined' && google.maps) {
-                const directionsService = new google.maps.DirectionsService();
-                directionsService.route({
-                    origin: driverLocation,
-                    destination: userLocation,
-                    travelMode: google.maps.TravelMode.DRIVING,
-                    avoidHighways: false,
-                    avoidTolls: false
-                }, (result, status) => {
-                    if (status === 'OK' && liveDirectionsRenderer) {
-                        liveDirectionsRenderer.setDirections(result);
-                        const leg = result.routes[0].legs[0];
-                        
-                        // Actualizar información de ETA
-                        const etaDisplay = document.getElementById('etaDisplay');
-                        const distanceDisplay = document.getElementById('distanceDisplay');
-                        const trackingStatus = document.getElementById('trackingStatus');
-                        
-                        if (etaDisplay) etaDisplay.textContent = `⏱️ ${leg.duration.text}`;
-                        if (distanceDisplay) distanceDisplay.textContent = `📏 ${leg.distance.text}`;
-                        if (trackingStatus) {
-                            trackingStatus.innerHTML = `
-                                <span class="status-indicator">✅</span>
-                                <span class="status-text">Conductor rastreado (ubicación validada)</span>
-                            `;
-                        }
-                        
-                        // Ajustar vista para mostrar ambos puntos
-                        const bounds = new google.maps.LatLngBounds();
-                        bounds.extend(driverLocation);
-                        bounds.extend(userLocation);
-                        liveTrackingMap.fitBounds(bounds);
-                    } else {
-                        console.error('Error calculating route:', status);
-                    }
-                });
-            }
-        }, (error) => {
-            console.error('Error getting user location for tracking:', error);
-        }, {
-            enableHighAccuracy: true,
-            timeout: 5000,
-            maximumAge: 10000
+            const directionsService = new google.maps.DirectionsService();
+            directionsService.route({
+                origin: driverLocation,
+                destination: userLocation,
+                travelMode: google.maps.TravelMode.DRIVING
+            }, (result, status) => {
+                if (status === 'OK') {
+                    liveDirectionsRenderer.setDirections(result);
+                    const leg = result.routes[0].legs[0];
+                    document.getElementById('etaDisplay').textContent = `⏱️ ${leg.duration.text}`;
+                    document.getElementById('distanceDisplay').textContent = `📏 ${leg.distance.text}`;
+                    
+                    // Ajustar vista para mostrar ambos puntos
+                    const bounds = new google.maps.LatLngBounds();
+                    bounds.extend(driverLocation);
+                    bounds.extend(userLocation);
+                    liveTrackingMap.fitBounds(bounds);
+                }
+            });
         });
     }
 }
@@ -2728,83 +2242,29 @@ function setupDriverTracking(tripId, tripData) {
 // Iniciar actualizaciones de ubicación del conductor
 function startDriverLocationUpdates(tripId, tripData) {
     if (navigator.geolocation) {
-        // Limpiar watcher anterior si existe
-        if (locationWatcher) {
-            navigator.geolocation.clearWatch(locationWatcher);
-        }
-        
         locationWatcher = navigator.geolocation.watchPosition(
             (position) => {
-                // Validar que la ubicación sea real antes de procesarla
-                if (validateRealLocation(position)) {
-                    const location = {
-                        lat: position.coords.latitude,
-                        lng: position.coords.longitude,
-                        accuracy: position.coords.accuracy,
-                        timestamp: position.timestamp,
-                        altitude: position.coords.altitude,
-                        heading: position.coords.heading,
-                        speed: position.coords.speed
-                    };
-                    updateDriverMapLocation(tripId, location, tripData);
-                } else {
-                    console.warn('⚠️ Ubicación del conductor no válida, ignorando...');
-                    showAlert('Ubicación no válida detectada. Verifica tu GPS.', 'warning');
-                }
+                const location = {
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude
+                };
+                updateDriverMapLocation(tripId, location, tripData);
             },
-            (error) => {
-                console.error('Error getting driver location:', error);
-                let errorMessage = 'Error al obtener ubicación del conductor';
-                switch(error.code) {
-                    case error.PERMISSION_DENIED:
-                        errorMessage = 'Permisos de ubicación denegados';
-                        break;
-                    case error.POSITION_UNAVAILABLE:
-                        errorMessage = 'Ubicación no disponible';
-                        break;
-                    case error.TIMEOUT:
-                        errorMessage = 'Tiempo de espera agotado';
-                        break;
-                }
-                showAlert(errorMessage, 'warning');
-            },
-            { 
-                enableHighAccuracy: true, 
-                timeout: 15000, 
-                maximumAge: 0 // No usar ubicación en caché
-            }
+            (error) => console.error('Error getting location:', error),
+            { enableHighAccuracy: true, timeout: 5000, maximumAge: 10000 }
         );
-        
-        // Agregar al cleanup manager
-        cleanupManager.addWatcher(locationWatcher);
     }
 }
 
 // Actualizar ubicación del conductor en el mapa
 async function updateDriverMapLocation(tripId, location, tripData) {
     try {
-        // Validar movimiento real si hay ubicación anterior
-        if (window.lastDriverLocation) {
-            const timeDiff = Date.now() - (window.lastDriverLocation.timestamp || Date.now());
-            if (!detectRealMovement(location, window.lastDriverLocation, timeDiff)) {
-                console.warn('⚠️ Movimiento del conductor no válido, ignorando...');
-                return;
-            }
-        }
-        
-        // Guardar ubicación anterior para comparación
-        window.lastDriverLocation = location;
-        
-        // Actualizar en Firebase con timestamp y validación
+        // Actualizar en Firebase con timestamp
         await window.updateDoc(window.doc(window.db, 'trips', tripId), {
             driverLocation: location,
             lastLocationUpdate: new Date(),
-            timestamp: Date.now(),
-            locationValidated: true,
-            accuracy: location.accuracy
+            timestamp: Date.now()
         });
-        
-        console.log('✅ Driver location updated and validated:', location);
         
         // Actualizar marcador del conductor con animación suave
         if (driverMarker) {

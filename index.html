@@ -38,16 +38,21 @@
     <meta name="geo.position" content="18.4861;-69.9312">
     <meta name="ICBM" content="18.4861, -69.9312">
     
-    <!-- Configuración externa -->
-    <script src="config.js"></script>
-    
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
         import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
         import { getFirestore, doc, setDoc, addDoc, getDoc, collection, query, where, onSnapshot, updateDoc } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
         
-        // Usar configuración externa
-        const firebaseConfig = window.CONFIG.firebase;
+        const firebaseConfig = {
+            apiKey: "AIzaSyC64S8YDVEoeyyteRix_TyItBWD49rDZbo",
+            authDomain: "golibre-27e90.firebaseapp.com",
+            databaseURL: "https://golibre-27e90-default-rtdb.firebaseio.com",
+            projectId: "golibre-27e90",
+            storageBucket: "golibre-27e90.firebasestorage.app",
+            messagingSenderId: "936790658838",
+            appId: "1:936790658838:web:cdbe7ea54b5b07cf654a37",
+            measurementId: "G-7QJGPLHLZY"
+        };
         
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
@@ -433,22 +438,6 @@
             </div>
         </div>
     </div>
-    <script>
-        // Cargar Google Maps con configuración externa
-        function loadGoogleMaps() {
-            const script = document.createElement('script');
-            script.src = `https://maps.googleapis.com/maps/api/js?key=${window.CONFIG.googleMaps.apiKey}&libraries=${window.CONFIG.googleMaps.libraries.join(',')}&callback=initMap`;
-            script.async = true;
-            script.defer = true;
-            document.head.appendChild(script);
-        }
-        
-        // Cargar cuando la configuración esté lista
-        if (window.CONFIG) {
-            loadGoogleMaps();
-        } else {
-            window.addEventListener('load', loadGoogleMaps);
-        }
-    </script>
+    <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAoR6-zL2FzSiNTHDYclDo6nt689weOE0k&libraries=places&callback=initMap"></script>
 </body>
 </html>

@@ -900,6 +900,10 @@ function showTripAccepted(trip) {
                 <div class="eta-info">
                     <div class="eta-display" id="etaDisplay">Calculando tiempo...</div>
                     <div class="distance-display" id="distanceDisplay"></div>
+                    <div class="tracking-status" id="trackingStatus">
+                        <span class="status-indicator">🔄</span>
+                        <span class="status-text">Rastreando conductor...</span>
+                    </div>
                 </div>
                 
                 <div class="trip-actions">
@@ -921,6 +925,9 @@ function showTripAccepted(trip) {
         
         // Escuchar cambios en el estado del viaje para detectar llegada
         listenForDriverArrival(trip.tripId || 'current');
+        
+        // Iniciar tracking de ubicación del conductor en tiempo real
+        startDriverLocationListener(trip.tripId || 'current', trip);
     }, 100);
 }
 
@@ -944,6 +951,52 @@ function startUserLocationTracking(tripId) {
             { enableHighAccuracy: true, timeout: 5000, maximumAge: 10000 }
         );
     }
+}
+
+// Iniciar listener de ubicación del conductor para el usuario
+function startDriverLocationListener(tripId, tripData) {
+    const tripRef = window.doc(window.db, 'trips', tripId);
+    
+    const driverLocationListener = window.onSnapshot(tripRef, (doc) => {
+        if (doc.exists()) {
+            const data = doc.data();
+            
+            // Si hay ubicación del conductor, actualizar el mapa
+            if (data.driverLocation && data.status === 'accepted') {
+                updateLiveDriverLocation(data.driverLocation, tripData);
+            }
+            
+            // Si el conductor ha llegado
+            if (data.status === 'driver_arrived' && data.driverArrivedMessage) {
+                // Completar icono de llegada
+                const arrivalStep = document.getElementById('arrivalStep');
+                const drivingStep = document.getElementById('drivingStep');
+                
+                if (arrivalStep && drivingStep) {
+                    drivingStep.classList.remove('active');
+                    drivingStep.classList.add('completed');
+                    arrivalStep.classList.add('completed');
+                    arrivalStep.innerHTML = `
+                        <div class="step-dot completed">✓</div>
+                        <span>Llegada</span>
+                    `;
+                }
+                
+                // Mostrar mensaje de llegada
+                const arrivalMessage = document.getElementById('arrivalMessage');
+                if (arrivalMessage) {
+                    arrivalMessage.style.display = 'block';
+                    arrivalMessage.querySelector('.message-text').textContent = data.driverArrivedMessage;
+                }
+                
+                // Mostrar alerta
+                showAlert(data.driverArrivedMessage, 'success');
+            }
+        }
+    });
+    
+    // Agregar al cleanup manager
+    cleanupManager.addListener(driverLocationListener);
 }
 
 // Escuchar llegada del conductor
@@ -1333,12 +1386,35 @@ async function acceptTrip(tripId) {
         
         const tripData = tripDoc.data();
         
+        // Obtener ubicación actual del conductor
+        let driverLocation = null;
+        if (navigator.geolocation) {
+            try {
+                const position = await new Promise((resolve, reject) => {
+                    navigator.geolocation.getCurrentPosition(resolve, reject, {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 30000
+                    });
+                });
+                
+                driverLocation = {
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude
+                };
+            } catch (error) {
+                console.error('Error getting driver location:', error);
+            }
+        }
+        
         // Actualizar estado del viaje en Firebase
         await window.updateDoc(window.doc(window.db, 'trips', tripId), {
             status: 'accepted',
             driverId: currentUser.uid,
             driverName: currentUser.displayName || 'Conductor',
-            acceptedAt: new Date()
+            acceptedAt: new Date(),
+            driverLocation: driverLocation,
+            lastLocationUpdate: new Date()
         });
         
         showAlert('Viaje aceptado! Dirigiéndote al cliente...', 'success');
@@ -1447,6 +1523,8 @@ function showActiveTrip(tripId, tripData) {
     // Inicializar mapa del conductor
     setTimeout(() => {
         initDriverLiveMap(tripId, tripData);
+        // Iniciar tracking inmediatamente
+        startDriverLocationUpdates(tripId, tripData);
     }, 100);
 }
 
@@ -2255,6 +2333,11 @@ function initLiveTrackingMap(tripId, tripData) {
     
     // Configurar marcadores y tracking
     setupLiveTracking(tripId, tripData);
+    
+    // Si ya hay ubicación del conductor, mostrarla inmediatamente
+    if (tripData.driverLocation) {
+        updateLiveDriverLocation(tripData.driverLocation, tripData);
+    }
 }
 
 // Configurar tracking en vivo
@@ -2293,6 +2376,8 @@ function setupLiveTracking(tripId, tripData) {
 
 // Actualizar ubicación del conductor en tiempo real
 function updateLiveDriverLocation(driverLocation, tripData) {
+    if (!liveTrackingMap || !driverLocation) return;
+    
     // Actualizar marcador del conductor
     if (driverMarker) {
         driverMarker.setPosition(driverLocation);
@@ -2342,25 +2427,49 @@ function updateLiveDriverLocation(driverLocation, tripData) {
             }
             
             // Crear trayectoria entre conductor y usuario
-            const directionsService = new google.maps.DirectionsService();
-            directionsService.route({
-                origin: driverLocation,
-                destination: userLocation,
-                travelMode: google.maps.TravelMode.DRIVING
-            }, (result, status) => {
-                if (status === 'OK') {
-                    liveDirectionsRenderer.setDirections(result);
-                    const leg = result.routes[0].legs[0];
-                    document.getElementById('etaDisplay').textContent = `⏱️ ${leg.duration.text}`;
-                    document.getElementById('distanceDisplay').textContent = `📏 ${leg.distance.text}`;
-                    
-                    // Ajustar vista para mostrar ambos puntos
-                    const bounds = new google.maps.LatLngBounds();
-                    bounds.extend(driverLocation);
-                    bounds.extend(userLocation);
-                    liveTrackingMap.fitBounds(bounds);
-                }
-            });
+            if (typeof google !== 'undefined' && google.maps) {
+                const directionsService = new google.maps.DirectionsService();
+                directionsService.route({
+                    origin: driverLocation,
+                    destination: userLocation,
+                    travelMode: google.maps.TravelMode.DRIVING,
+                    avoidHighways: false,
+                    avoidTolls: false
+                }, (result, status) => {
+                    if (status === 'OK' && liveDirectionsRenderer) {
+                        liveDirectionsRenderer.setDirections(result);
+                        const leg = result.routes[0].legs[0];
+                        
+                        // Actualizar información de ETA
+                        const etaDisplay = document.getElementById('etaDisplay');
+                        const distanceDisplay = document.getElementById('distanceDisplay');
+                        const trackingStatus = document.getElementById('trackingStatus');
+                        
+                        if (etaDisplay) etaDisplay.textContent = `⏱️ ${leg.duration.text}`;
+                        if (distanceDisplay) distanceDisplay.textContent = `📏 ${leg.distance.text}`;
+                        if (trackingStatus) {
+                            trackingStatus.innerHTML = `
+                                <span class="status-indicator">✅</span>
+                                <span class="status-text">Conductor rastreado</span>
+                            `;
+                        }
+                        
+                        // Ajustar vista para mostrar ambos puntos
+                        const bounds = new google.maps.LatLngBounds();
+                        bounds.extend(driverLocation);
+                        bounds.extend(userLocation);
+                        liveTrackingMap.fitBounds(bounds);
+                    } else {
+                        console.error('Error calculating route:', status);
+                    }
+                });
+            }
+        }, (error) => {
+            console.error('Error getting user location for tracking:', error);
+        }, {
+            enableHighAccuracy: true,
+            timeout: 5000,
+            maximumAge: 10000
         });
     }
 }
@@ -2463,6 +2572,11 @@ function setupDriverTracking(tripId, tripData) {
 // Iniciar actualizaciones de ubicación del conductor
 function startDriverLocationUpdates(tripId, tripData) {
     if (navigator.geolocation) {
+        // Limpiar watcher anterior si existe
+        if (locationWatcher) {
+            navigator.geolocation.clearWatch(locationWatcher);
+        }
+        
         locationWatcher = navigator.geolocation.watchPosition(
             (position) => {
                 const location = {
@@ -2471,9 +2585,19 @@ function startDriverLocationUpdates(tripId, tripData) {
                 };
                 updateDriverMapLocation(tripId, location, tripData);
             },
-            (error) => console.error('Error getting location:', error),
-            { enableHighAccuracy: true, timeout: 5000, maximumAge: 10000 }
+            (error) => {
+                console.error('Error getting driver location:', error);
+                showAlert('Error al obtener ubicación del conductor', 'warning');
+            },
+            { 
+                enableHighAccuracy: true, 
+                timeout: 10000, 
+                maximumAge: 5000 
+            }
         );
+        
+        // Agregar al cleanup manager
+        cleanupManager.addWatcher(locationWatcher);
     }
 }
 
@@ -2486,6 +2610,8 @@ async function updateDriverMapLocation(tripId, location, tripData) {
             lastLocationUpdate: new Date(),
             timestamp: Date.now()
         });
+        
+        console.log('Driver location updated:', location);
         
         // Actualizar marcador del conductor con animación suave
         if (driverMarker) {

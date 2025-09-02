@@ -1,6 +1,6 @@
 // Firebase initialization will be handled by HTML script tags
 // This ensures compatibility across different environments
-
+ 
 // Check Firebase connection
 function checkFirebaseConnection() {
     if (window.auth && window.db && window.collection && window.query && window.where && window.onSnapshot) {

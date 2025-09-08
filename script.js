@@ -2494,7 +2494,101 @@ function stopLocationTracking() {
     // Nueva función para actualizar ambos marcadores y la ruta
     function updateLiveDriverAndUserLocation(driverLocation, userLocation) {
         // Actualizar marcador del conductor
-        if (driverMarker) {
+        if (driverMarker) {        function setupLiveTracking(tripId, tripData) {
+            // Opcional: marcador del destino
+            geocodeAddress(tripData.destination).then(destCoords => {
+                if (destCoords) {
+                    new google.maps.Marker({
+                        position: destCoords,
+                        map: liveTrackingMap,
+                        title: 'Destino',
+                        icon: {
+                            url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
+                                '<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">' +
+                                '<circle cx="20" cy="20" r="18" fill="#4CAF50" stroke="white" stroke-width="3"/>' +
+                                '<text x="20" y="26" text-anchor="middle" fill="white" font-size="16">🏁</text>' +
+                                '</svg>'
+                            ),
+                            scaledSize: new google.maps.Size(40, 40)
+                        }
+                    });
+                }
+            });
+        
+            // Escuchar ubicación del conductor y usuario en tiempo real
+            const tripRef = window.doc(window.db, 'trips', tripId);
+            window.onSnapshot(tripRef, (doc) => {
+                if (doc.exists()) {
+                    const data = doc.data();
+                    if (data.driverLocation && data.userLocation) {
+                        updateLiveDriverAndUserLocation(data.driverLocation, data.userLocation);
+                    }
+                }
+            });
+        }
+        
+        // Actualiza ambos marcadores y la ruta en tiempo real
+        function updateLiveDriverAndUserLocation(driverLocation, userLocation) {
+            // Marcador del conductor
+            if (driverMarker) {
+                driverMarker.setPosition(driverLocation);
+            } else {
+                driverMarker = new google.maps.Marker({
+                    position: driverLocation,
+                    map: liveTrackingMap,
+                    title: 'Conductor',
+                    icon: {
+                        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
+                            '<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">' +
+                            '<circle cx="20" cy="20" r="18" fill="#2196F3" stroke="white" stroke-width="3"/>' +
+                            '<text x="20" y="26" text-anchor="middle" fill="white" font-size="16">🚗</text>' +
+                            '</svg>'
+                        ),
+                        scaledSize: new google.maps.Size(40, 40)
+                    }
+                });
+            }
+        
+            // Marcador del usuario
+            if (userMarker) {
+                userMarker.setPosition(userLocation);
+            } else {
+                userMarker = new google.maps.Marker({
+                    position: userLocation,
+                    map: liveTrackingMap,
+                    title: 'Tu ubicación',
+                    icon: {
+                        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
+                            '<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">' +
+                            '<circle cx="20" cy="20" r="18" fill="#FF5722" stroke="white" stroke-width="3"/>' +
+                            '<text x="20" y="26" text-anchor="middle" fill="white" font-size="16">👤</text>' +
+                            '</svg>'
+                        ),
+                        scaledSize: new google.maps.Size(40, 40)
+                    }
+                });
+            }
+        
+            // Traza la ruta entre conductor y usuario
+            const directionsService = new google.maps.DirectionsService();
+            directionsService.route({
+                origin: driverLocation,
+                destination: userLocation,
+                travelMode: google.maps.TravelMode.DRIVING
+            }, (result, status) => {
+                if (status === 'OK') {
+                    liveDirectionsRenderer.setDirections(result);
+                    const leg = result.routes[0].legs[0];
+                    document.getElementById('etaDisplay').textContent = `⏱️ ${leg.duration.text}`;
+                    document.getElementById('distanceDisplay').textContent = `📏 ${leg.distance.text}`;
+                    // Ajusta el mapa para mostrar ambos puntos
+                    const bounds = new google.maps.LatLngBounds();
+                    bounds.extend(driverLocation);
+                    bounds.extend(userLocation);
+                    liveTrackingMap.fitBounds(bounds);
+                }
+            });
+        }
             driverMarker.setPosition(driverLocation);
         } else {
             driverMarker = new google.maps.Marker({

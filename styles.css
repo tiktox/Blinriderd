@@ -362,14 +362,44 @@ input:invalid:not(:placeholder-shown) {
 input:valid:not(:placeholder-shown) {
     border-color: #22C55E;
 }
+.live-tracking-map {
+    border-radius: 12px;
+    margin-bottom: 15px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
 
+.trip-details-card {
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
 .alert {
     padding: 8px 12px;
     border-radius: 6px;
     margin-bottom: 12px;
     font-size: 12px;
 }
+.live-tracking-map {
+    border-radius: 12px;
+    margin-bottom: 15px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    background: #f8f9fa;
+}
 
+.trip-tracking-container {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    padding: 15px;
+}
+
+.trip-details-card {
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
 .alert-error {
     background: rgba(239, 68, 68, 0.1);
     border: 1px solid #EF4444;

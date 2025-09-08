@@ -2036,98 +2036,57 @@ function initLiveTrackingMap(tripId, tripData) {
     setupLiveTracking(tripId, tripData);
 }
 
-// Configurar tracking en vivo
+// Configurar tracking en vivo - VERSIÓN SIMPLE
 function setupLiveTracking(tripId, tripData) {
-    // Marcador del destino
-    geocodeAddress(tripData.destination).then(destCoords => {
-        if (destCoords) {
-            new google.maps.Marker({
-                position: destCoords,
-                map: liveTrackingMap,
-                title: 'Destino',
-                icon: {
-                    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
-                        '<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">' +
-                        '<circle cx="20" cy="20" r="18" fill="#4CAF50" stroke="white" stroke-width="3"/>' +
-                        '<text x="20" y="26" text-anchor="middle" fill="white" font-size="16">🏁</text>' +
-                        '</svg>'
-                    ),
-                    scaledSize: new google.maps.Size(40, 40)
-                }
-            });
-        }
-    });
-    
-    // Inicializar marcador del usuario inmediatamente
-    if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition((position) => {
-            const userLocation = {
-                lat: position.coords.latitude,
-                lng: position.coords.longitude
-            };
-            
-            // Crear marcador del usuario
-            if (!userMarker) {
-                userMarker = new google.maps.Marker({
-                    position: userLocation,
-                    map: liveTrackingMap,
-                    title: 'Tu ubicación',
-                    icon: {
-                        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
-                            '<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">' +
-                            '<circle cx="20" cy="20" r="18" fill="#FF5722" stroke="white" stroke-width="3"/>' +
-                            '<text x="20" y="26" text-anchor="middle" fill="white" font-size="16">👤</text>' +
-                            '</svg>'
-                        ),
-                        scaledSize: new google.maps.Size(40, 40)
-                    }
-                });
-            }
-            
-            // Centrar mapa en el usuario
-            liveTrackingMap.setCenter(userLocation);
-        });
-    }
-    
-    // Escuchar ubicación del conductor en tiempo real
     const tripRef = window.doc(window.db, 'trips', tripId);
+    
+    // Escuchar cambios del viaje
     window.onSnapshot(tripRef, (doc) => {
         if (doc.exists()) {
             const data = doc.data();
+            
+            // Si hay ubicación del conductor, crear/actualizar marcador
             if (data.driverLocation) {
-                // Crear/actualizar marcador del conductor
-                if (driverMarker) {
-                    driverMarker.setPosition(data.driverLocation);
-                } else {
+                if (!driverMarker) {
                     driverMarker = new google.maps.Marker({
                         position: data.driverLocation,
                         map: liveTrackingMap,
                         title: 'Conductor',
-                        icon: {
-                            url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
-                                '<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">' +
-                                '<circle cx="20" cy="20" r="18" fill="#2196F3" stroke="white" stroke-width="3"/>' +
-                                '<text x="20" y="26" text-anchor="middle" fill="white" font-size="16">🚗</text>' +
-                                '</svg>'
-                            ),
-                            scaledSize: new google.maps.Size(40, 40)
-                        }
+                        icon: { url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent('<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg"><circle cx="20" cy="20" r="18" fill="#2196F3" stroke="white" stroke-width="3"/><text x="20" y="26" text-anchor="middle" fill="white" font-size="16">🚗</text></svg>'), scaledSize: new google.maps.Size(40, 40) }
                     });
+                } else {
+                    driverMarker.setPosition(data.driverLocation);
                 }
                 
-                // Si tenemos ambas ubicaciones, mostrar trayectoria
-                if (data.userLocation) {
-                    updateLiveDriverAndUserLocation(data.driverLocation, data.userLocation);
-                } else if (userMarker) {
-                    // Usar la ubicación actual del marcador del usuario
-                    const userPos = userMarker.getPosition();
-                    if (userPos) {
-                        updateLiveDriverAndUserLocation(data.driverLocation, {
-                            lat: userPos.lat(),
-                            lng: userPos.lng()
+                // Obtener ubicación del usuario y crear trayectoria
+                navigator.geolocation.getCurrentPosition((position) => {
+                    const userLocation = { lat: position.coords.latitude, lng: position.coords.longitude };
+                    
+                    // Crear marcador del usuario si no existe
+                    if (!userMarker) {
+                        userMarker = new google.maps.Marker({
+                            position: userLocation,
+                            map: liveTrackingMap,
+                            title: 'Tu ubicación',
+                            icon: { url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent('<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg"><circle cx="20" cy="20" r="18" fill="#FF5722" stroke="white" stroke-width="3"/><text x="20" y="26" text-anchor="middle" fill="white" font-size="16">👤</text></svg>'), scaledSize: new google.maps.Size(40, 40) }
                         });
                     }
-                }
+                    
+                    // Crear trayectoria
+                    const directionsService = new google.maps.DirectionsService();
+                    directionsService.route({
+                        origin: data.driverLocation,
+                        destination: userLocation,
+                        travelMode: google.maps.TravelMode.DRIVING
+                    }, (result, status) => {
+                        if (status === 'OK') {
+                            liveDirectionsRenderer.setDirections(result);
+                            const leg = result.routes[0].legs[0];
+                            document.getElementById('etaDisplay').textContent = `⏱️ ${leg.duration.text}`;
+                            document.getElementById('distanceDisplay').textContent = `📏 ${leg.distance.text}`;
+                        }
+                    });
+                });
             }
         }
     });

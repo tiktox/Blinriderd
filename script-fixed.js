@@ -1,4 +1,94 @@
-// Variables globales
+function showTripAccepted(trip) {
+    const mainApp = document.getElementById('mainApp');
+    const appContent = mainApp.querySelector('.app-content');
+    
+    appContent.innerHTML = `
+        <div class="trip-accepted-section">
+            <h2>✅ Conductor asignado</h2>
+            <div id="liveTripMap" style="width:100%;height:350px;border-radius:12px;margin-bottom:16px;"></div>
+            <p><strong>Conductor:</strong> ${trip.driverName}</p>
+            <p>El conductor se dirige hacia ti</p>
+        </div>
+    `;
+    setTimeout(() => {
+        showLiveTripMap(trip);
+    }, 200);
+}async function showLiveTripMap(trip) {
+    if (!window.google) return;
+
+    const mapDiv = document.getElementById('liveTripMap');
+    const map = new google.maps.Map(mapDiv, {
+        zoom: 15,
+        center: { lat: 18.4861, lng: -69.9312 }
+    });
+
+    const directionsService = new google.maps.DirectionsService();
+    const directionsRenderer = new google.maps.DirectionsRenderer({
+        map: map,
+        suppressMarkers: true,
+        polylineOptions: { strokeColor: '#22C55E', strokeWeight: 5 }
+    });
+
+    // Geocodifica la dirección del cliente
+    const geocoder = new google.maps.Geocoder();
+    geocoder.geocode({ address: trip.origin }, (results, status) => {
+        if (status === 'OK' && results[0]) {
+            const clientPos = results[0].geometry.location;
+
+            // Escucha la ubicación del conductor en tiempo real
+            const tripRef = window.doc(window.db, 'trips', trip.tripId || trip.id);
+            window.onSnapshot(tripRef, (doc) => {
+                const tripData = doc.data();
+                if (tripData && tripData.driverLocation) {
+                    const driverPos = new google.maps.LatLng(
+                        tripData.driverLocation.lat,
+                        tripData.driverLocation.lng
+                    );
+
+                    // Coloca marcadores
+                    new google.maps.Marker({
+                        position: clientPos,
+                        map: map,
+                        title: 'Tú',
+                        icon: {
+                            path: google.maps.SymbolPath.CIRCLE,
+                            scale: 8,
+                            fillColor: '#3B82F6',
+                            fillOpacity: 1,
+                            strokeColor: '#EAEAEA',
+                            strokeWeight: 2
+                        }
+                    });
+                    new google.maps.Marker({
+                        position: driverPos,
+                        map: map,
+                        title: 'Conductor',
+                        icon: {
+                            url: 'https://maps.google.com/mapfiles/ms/icons/taxi.png'
+                        }
+                    });
+
+                    // Dibuja la ruta
+                    directionsService.route({
+                        origin: driverPos,
+                        destination: clientPos,
+                        travelMode: google.maps.TravelMode.DRIVING
+                    }, (response, status) => {
+                        if (status === 'OK') {
+                            directionsRenderer.setDirections(response);
+                        }
+                    });
+
+                    // Centra el mapa entre ambos
+                    const bounds = new google.maps.LatLngBounds();
+                    bounds.extend(clientPos);
+                    bounds.extend(driverPos);
+                    map.fitBounds(bounds);
+                }
+            });
+        }
+    });
+}// Variables globales
 let tripsListener = null;
 let driverOnline = false;
 let map = null;

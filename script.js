@@ -2,20 +2,30 @@
 // This ensures compatibility across different environments
 
 // Check Firebase connection
+// Check Firebase connection
 function checkFirebaseConnection() {
-    if (window.auth && window.db && window.collection && window.query && window.where && window.onSnapshot) {
-        console.log('Firebase initialized successfully');
-        return true;
-    } else {
-        console.error('Firebase not properly initialized. Make sure Firebase scripts are loaded.');
-        console.log('Available Firebase functions:', {
-            auth: !!window.auth,
-            db: !!window.db,
-            collection: !!window.collection,
-            query: !!window.query,
-            where: !!window.where,
-            onSnapshot: !!window.onSnapshot
-        });
+    try {
+        if (window.auth && window.db && window.collection && window.query && window.where && window.onSnapshot) {
+            console.log('Firebase initialized successfully');
+            // Verificar que auth esté realmente conectado
+            if (window.auth.currentUser) {
+                console.log('Usuario autenticado:', window.auth.currentUser.email);
+            }
+            return true;
+        } else {
+            console.error('Firebase not properly initialized');
+            console.log('Available Firebase functions:', {
+                auth: !!window.auth,
+                db: !!window.db,
+                collection: !!window.collection,
+                query: !!window.query,
+                where: !!window.where,
+                onSnapshot: !!window.onSnapshot
+            });
+            return false;
+        }
+    } catch (error) {
+        console.error('Error checking Firebase connection:', error);
         return false;
     }
 }
@@ -665,17 +675,84 @@ function showSearchingDriver(tripId) {
     `;
     
     // Escuchar cambios en el estado del viaje
-    const tripRef = window.doc(window.db, 'trips', tripId);
-    window.onSnapshot(tripRef, (doc) => {
-        if (doc.exists()) {
-            const trip = doc.data();
-            if (trip.status === 'accepted') {
-                showTripAccepted(trip);
-            } else if (trip.status === 'completed') {
-                showTripCompleted(trip);
-            }
-        }
-    });
+    // Mostrar viaje aceptado
+function showTripAccepted(trip) {
+    const mainApp = document.getElementById('mainApp');
+    const appContent = mainApp.querySelector('.app-content');
+    
+    appContent.innerHTML = `
+        <div class="trip-tracking-container">
+            <div id="liveTrackingMap" class="live-tracking-map" style="height: 300px; width: 100%;"></div>
+            
+            <div class="trip-details-card">
+                <div class="card-header">
+                    <div class="driver-avatar">
+                        <span class="avatar-text">${trip.driverName ? trip.driverName.charAt(0) : 'C'}</span>
+                    </div>
+                    <div class="driver-info">
+                        <h3>${trip.driverName || 'Conductor'}</h3>
+                        <p class="vehicle-info">🚗 ${trip.vehicleInfo || 'Vehículo'}</p>
+                        <p class="plate-info">📋 ${trip.vehiclePlate || 'ABC-123'}</p>
+                    </div>
+                    <div class="trip-status-indicator">
+                        <div class="status-dot active"></div>
+                        <span class="status-text">En camino</span>
+                    </div>
+                </div>
+                
+                <div class="progress-timeline">
+                    <div class="timeline-step completed">
+                        <div class="step-dot">✓</div>
+                        <span>Viaje confirmado</span>
+                    </div>
+                    <div class="timeline-step active" id="drivingStep">
+                        <div class="step-dot">🚗</div>
+                        <span>Conductor en camino</span>
+                    </div>
+                    <div class="timeline-step" id="arrivalStep">
+                        <div class="step-dot">📍</div>
+                        <span>Llegada</span>
+                    </div>
+                    <div class="timeline-step">
+                        <div class="step-dot">🏁</div>
+                        <span>Completado</span>
+                    </div>
+                </div>
+                
+                <div id="arrivalMessage" class="arrival-message" style="display: none;">
+                    <div class="message-content">
+                        <div class="message-icon">📍</div>
+                        <div class="message-text"></div>
+                    </div>
+                </div>
+                
+                <div class="eta-info">
+                    <div class="eta-display" id="etaDisplay">Calculando tiempo...</div>
+                    <div class="distance-display" id="distanceDisplay"></div>
+                </div>
+                
+                <div class="trip-actions">
+                    <button class="contact-btn" onclick="contactDriver('${trip.driverPhone || ''}')">
+                        📞 Contactar
+                    </button>
+                    <button class="cancel-btn" onclick="cancelTrip('${trip.tripId || 'current'}')">
+                        ❌ Cancelar
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Inicializar mapa y tracking del usuario
+    setTimeout(() => {
+        initLiveTrackingMap(trip.tripId || 'current', trip);
+        startUserLocationTracking(trip.tripId || 'current');
+        
+        // Escuchar cambios en el estado del viaje para detectar llegada
+        listenForDriverArrival(trip.tripId || 'current');
+    }, 100);
+
+}
 }
 
 // Mostrar viaje aceptado
@@ -954,6 +1031,42 @@ function showDriverApp(user) {
 // Alternar estado del conductor
 let driverOnline = false;
 function toggleDriverStatus() {
+    // Alternar estado del conductor
+let driverOnline = false;
+function toggleDriverStatus() {
+    console.log('Toggle driver status called');
+    
+    // Verificar que el usuario esté autenticado
+    const currentUser = window.auth?.currentUser;
+    if (!currentUser) {
+        showAlert('Error: Debes iniciar sesión primero', 'error');
+        return;
+    }
+    
+    // Verificar conexión a Firebase
+    if (!checkFirebaseConnection()) {
+        showAlert('Error: No hay conexión con la base de datos', 'error');
+        return;
+    }
+    
+    driverOnline = !driverOnline;
+    // ... resto del código ...
+}
+    // Verificar que Firebase esté inicializado
+    if (typeof firebase === 'undefined') {
+        showAlert('Error: Firebase no está cargado', 'error');
+        return;
+    }
+    
+    if (!checkFirebaseConnection()) {
+        showAlert('Error: Firebase no disponible. Recargando página...', 'error');
+        setTimeout(() => location.reload(), 2000);
+        return;
+    }
+    
+    driverOnline = !driverOnline;
+    // ... resto del código ...
+
     if (!checkFirebaseConnection()) {
         showAlert('Error: Firebase no disponible', 'error');
         return;
@@ -1005,12 +1118,19 @@ function toggleDriverStatus() {
 }
 
 // Cargar viajes disponibles desde Firebase
+// Cargar viajes disponibles desde Firebase
 let tripsListener = null;
 function loadAvailableTrips() {
     const tripsList = document.getElementById('tripsList');
     if (!tripsList) {
         console.error('Element tripsList not found');
         return;
+    }
+    
+    // Limpiar listener anterior si existe
+    if (tripsListener) {
+        tripsListener();
+        tripsListener = null;
     }
     
     if (!checkFirebaseConnection()) {
@@ -1023,7 +1143,10 @@ function loadAvailableTrips() {
     try {
         // Consulta en tiempo real de viajes con estado "searching"
         const tripsRef = window.collection(window.db, 'trips');
-        const searchingTrips = window.query(tripsRef, window.where('status', '==', 'searching'));
+        const searchingTrips = window.query(
+            tripsRef, 
+            window.where('status', '==', 'searching')
+        );
         
         console.log('Setting up trips listener...');
         
@@ -1031,10 +1154,9 @@ function loadAvailableTrips() {
         tripsListener = window.onSnapshot(searchingTrips, 
             (snapshot) => {
                 console.log(`Snapshot received: ${snapshot.size} trips`);
-                console.log('Snapshot empty:', snapshot.empty);
                 
                 if (snapshot.empty) {
-                    tripsList.innerHTML = '<p>No hay viajes disponibles</p>';
+                    tripsList.innerHTML = '<p>No hay viajes disponibles en este momento</p>';
                     return;
                 }
                 
@@ -1042,8 +1164,6 @@ function loadAvailableTrips() {
                 snapshot.forEach((doc) => {
                     const trip = doc.data();
                     const tripId = doc.id;
-                    
-                    console.log('Trip data:', tripId, trip);
                     
                     // Validar que el viaje tenga los campos necesarios
                     if (!trip.origin || !trip.destination || !trip.totalFare) {
@@ -1058,9 +1178,9 @@ function loadAvailableTrips() {
                         <div class="trip-card" data-trip-id="${tripId}">
                             <div class="trip-info">
                                 <div class="trip-route">
-                                    <div class="route-point">📍 ${trip.origin}</div>
+                                    <div class="route-point">📍 ${trip.origin.substring(0, 30)}${trip.origin.length > 30 ? '...' : ''}</div>
                                     <div class="route-arrow">→</div>
-                                    <div class="route-point">📍 ${trip.destination}</div>
+                                    <div class="route-point">📍 ${trip.destination.substring(0, 30)}${trip.destination.length > 30 ? '...' : ''}</div>
                                 </div>
                                 <div class="trip-details">
                                     <span class="distance">${trip.distance || 'N/A'} km</span>
@@ -1090,7 +1210,7 @@ function loadAvailableTrips() {
         
     } catch (error) {
         console.error('Setup error:', error);
-        tripsList.innerHTML = '<p>Error en configuración</p>';
+        tripsList.innerHTML = '<p>Error en configuración. Intenta recargar la página.</p>';
     }
 }
 
